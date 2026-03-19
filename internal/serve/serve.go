@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"gmart/internal/adapters/metrics"
 	"gmart/internal/adapters/pgc"
-	"gmart/internal/config"
+	"gmart/internal/dto"
 	"gmart/internal/model/auth"
 	"gmart/internal/service/loyalty"
 	"gmart/internal/service/orders"
@@ -24,7 +24,7 @@ import (
 
 // Input входные параметры для Serve
 type Input struct {
-	Cfg        config.Config
+	Options    *dto.CLIOptions
 	Pg         pgc.PgInstance
 	MetricsReg *prometheus.Registry
 }
@@ -34,40 +34,40 @@ func Serve(ctx context.Context, arg *Input) error {
 	slog.Info("Starting server",
 		slog.String(
 			"ListenAddr",
-			arg.Cfg.ListenAddr(),
+			arg.Options.RunAddress,
 		),
 		slog.String(
 			"AccrualSystemAddr",
-			arg.Cfg.AccrualSystemAddr(),
+			arg.Options.AccrualSystemAddress,
 		),
 		slog.String(
 			"PgInstance",
-			arg.Pg.String(),
+			arg.Options.DatabaseURI,
 		),
 	)
 
 	mux := http.NewServeMux()
 	humaAPI := InitHuma(mux)
 
-	user, err := user.NewUser(arg.Cfg, arg.Pg, metrics.NewForAuth(arg.MetricsReg))
+	// Токен генератор/валидатор
+	tokenGenerator, err := auth.NewTokenGenerator(jwt.SigningMethodHS256, arg.Options.JwtSecretKey, arg.Options.JwtTtl)
 	if err != nil {
-		return fmt.Errorf("create user fail: %w", err)
+		return fmt.Errorf("token generator create fail: %w", err)
 	}
-
-	orders, err := orders.NewOrders(arg.Cfg, arg.Pg, metrics.NewForOrders(arg.MetricsReg))
-	if err != nil {
-		return fmt.Errorf("create order fail: %w", err)
-	}
-
-	loyalty, err := loyalty.NewLoyalty(arg.Cfg, arg.Pg, metrics.NewForLoyalty(arg.MetricsReg))
-	if err != nil {
-		return fmt.Errorf("create loyalty fail: %w", err)
-	}
-
-	tokenVerifier, err := auth.NewTokenVerifier(jwt.SigningMethodHS256, arg.Cfg.JWTSecretKey())
+	tokenVerifier, err := auth.NewTokenVerifier(jwt.SigningMethodHS256, arg.Options.JwtSecretKey)
 	if err != nil {
 		return fmt.Errorf("failed to create token verifier: %w", err)
 	}
+
+	// Repo
+	authRepo := user.NewAuthRepo(arg.Pg, arg.Options.SessionTtl, metrics.NewForAuth(arg.MetricsReg))
+	ordersRepo := orders.NewOrdersRepo(arg.Pg, metrics.NewForOrders(arg.MetricsReg))
+	loyaltyRepo := loyalty.NewLoyaltyRepo(arg.Pg, metrics.NewForLoyalty(arg.MetricsReg))
+
+	// Vertical Slices
+	user := user.NewUser(authRepo, tokenGenerator)
+	orders := orders.NewOrders(ordersRepo)
+	loyalty := loyalty.NewLoyalty(loyaltyRepo)
 
 	// Регистрация роутингов
 	user.RegistryRoutes(humaAPI)
@@ -76,7 +76,7 @@ func Serve(ctx context.Context, arg *Input) error {
 
 	// Настройка HTTP сервера
 	srv := &http.Server{
-		Addr:              arg.Cfg.ListenAddr(),
+		Addr:              arg.Options.RunAddress,
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second, // Защита от Slowloris атак
 		IdleTimeout:       30 * time.Second,

@@ -2,28 +2,57 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"gmart/internal/adapters/metrics"
 	"gmart/internal/adapters/pgc"
-	"gmart/internal/config"
+	"gmart/internal/dto"
 	"gmart/internal/serve"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
+	"reflect"
+	"strings"
 	"syscall"
+	"unicode"
 
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/adapters/humago"
+	"github.com/danielgtaylor/huma/v2/humacli"
 	"github.com/joho/godotenv"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-func main() {
+func FixEnv() {
+	opts := dto.CLIOptions{}
+	t := reflect.TypeOf(opts)
+	for i := 0; i < t.NumField(); i++ {
+		var fieldName strings.Builder
+		runes := []rune(t.Field(i).Name)
+		for i := 0; i < len(runes); i++ {
+			if i > 0 && unicode.IsUpper(runes[i]) && unicode.IsLower(runes[i-1]) {
+				fieldName.WriteRune('_')
+			}
+			fieldName.WriteRune(unicode.ToUpper(runes[i]))
+		}
+		if val, ok := os.LookupEnv(fieldName.String()); ok {
+			target := "SERVICE_" + fieldName.String()
+			if _, exists := os.LookupEnv(target); !exists {
+				os.Setenv(target, val)
+			}
+		}
+	}
+}
 
-	// Graceful Shutdown
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+func main() {
+	// Загрузка .env
+	_ = godotenv.Load()
+
+	// HUMA читает переменные окружения только с префиксом "SERVICE_"
+	// И этот префикс захардкожен...
+	FixEnv()
 
 	// Запускаем программу
-	if err := run(ctx); err != nil {
+	if err := run(); err != nil {
 		slog.Error("server terminated with error",
 			slog.Any("err", err),
 		)
@@ -32,51 +61,100 @@ func main() {
 
 }
 
-func run(ctx context.Context) error {
+func run() error {
 
-	// Загрузка .env
-	_ = godotenv.Load()
+	// Graceful Shutdown
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
-	// Конфигурация
-	cmdArgs := os.Args[1:]
-	cfg := config.NewConfig()
-	cfg, err := cfg.Init(
-		config.WithEnv(),
-		config.WithCmdArgs(&cmdArgs),
-	)
-	if err != nil {
-		return fmt.Errorf("failed to initialize config object: %w", err)
-	}
-	slog.Info("configuration initialized",
-		slog.String("version", cfg.Version()),
-	)
+	cli := humacli.New(func(hooks humacli.Hooks, options *dto.CLIOptions) {
+		hooks.OnStart(func() {
+			mux := http.NewServeMux()
+			humaAPI := InitHuma(mux, options)
+			slog.Info("HUMA", slog.Any("api", humaAPI))
 
-	// Регистратор для метрик
-	metricsReg := prometheus.NewRegistry()
+			slog.Info("Starting server",
+				slog.String("RunAddress", options.RunAddress),
+			)
 
-	// Инстанс PostgreSQL
-	pg, err := pgc.NewPgInstance(
-		ctx,
-		cfg.DBDSN(),
-		metrics.NewForPgInstance(metricsReg),
-	)
-	if err != nil {
-		return fmt.Errorf("failed to initialize the postgres instance object: %w", err)
-	}
-	defer func() {
-		slog.Info("closing database connection")
-		pg.Close()
-	}()
+			// Регистратор для метрик
+			metricsReg := prometheus.NewRegistry()
+			slog.Info("Prometheus initialized")
 
-	// Миграции прерывать нельзя
-	if err := pg.RunMigrations(context.Background()); err != nil {
-		return fmt.Errorf("failed to run migrations: %w", err)
-	}
+			// Инстанс PostgreSQL
+			pg, err := pgc.NewPgInstance(
+				ctx,
+				options.DatabaseURI,
+				metrics.NewForPgInstance(metricsReg),
+			)
+			if err != nil {
+				slog.Error("failed postgres initialize",
+					slog.Any("err", err),
+				)
+				return
+			}
+			defer func() {
+				slog.Info("closing database connection")
+				pg.Close()
+			}()
 
-	// Запуск HTTP сервера
-	return serve.Serve(ctx, &serve.Input{
-		Cfg:        cfg,
-		Pg:         pg,
-		MetricsReg: metricsReg,
+			// Миграции прерывать нельзя
+			if err := pg.RunMigrations(context.Background()); err != nil {
+				slog.Error("failed to run migrations",
+					slog.Any("err", err),
+				)
+				return
+			}
+
+			// Запуск HTTP сервера
+			serve.Serve(ctx, &serve.Input{
+				Options:    options,
+				Pg:         pg,
+				MetricsReg: metricsReg,
+			})
+		})
+
+		hooks.OnStop(func() {
+			slog.Info("HUMA.OnStop")
+			stop()
+		})
 	})
+
+	// Run the CLI. When passed no commands, it starts the server.
+	cli.Run()
+
+	//	// Конфигурация
+	//	cmdArgs := os.Args[1:]
+	//	cfg := config.NewConfig()
+	//	cfg, err := cfg.Init(
+	//		config.WithEnv(),
+	//		config.WithCmdArgs(&cmdArgs),
+	//	)
+	//	if err != nil {
+	//		return fmt.Errorf("failed to initialize config object: %w", err)
+	//	}
+	//	slog.Info("configuration initialized",
+	//		slog.String("version", cfg.Version()),
+	//	)
+
+	return nil
+}
+
+func InitHuma(mux *http.ServeMux, options *dto.CLIOptions) huma.API {
+	slog.Info("Init HUMA", slog.Any("options", options))
+
+	humaConfig := huma.DefaultConfig("GopherMart API", "1.0.0")
+	humaConfig.Formats["text/plain"] = huma.DefaultFormats["text/plain"]
+	humaConfig.Components = &huma.Components{
+		SecuritySchemes: map[string]*huma.SecurityScheme{
+			"bearer": {
+				Type:         "http",
+				Scheme:       "bearer",
+				BearerFormat: "JWT",
+				Description:  "Введите JWT токен для доступа к защищенным ресурсам.",
+			},
+		},
+	}
+
+	return humago.New(mux, humaConfig)
 }

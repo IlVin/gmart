@@ -3,14 +3,10 @@ package user
 import (
 	"context"
 	"fmt"
-	"gmart/internal/adapters/pgc"
-	"gmart/internal/config"
 	"gmart/internal/domain"
-	"gmart/internal/model/auth"
 	"net/http"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
 
@@ -57,20 +53,11 @@ type User struct {
 }
 
 // NewUser создает новый объект манипулирования пользователями
-func NewUser(cfg config.Config, pg pgc.PgInstance, m AuthMetrics) (*User, error) {
-
-	// Токен генератор
-	tGen, err := auth.NewTokenGenerator(jwt.SigningMethodHS256, cfg.JWTSecretKey(), cfg.JWTTTL())
-	if err != nil {
-		return nil, fmt.Errorf("token generator create fail: %w", err)
-	}
-
-	// Результат
+func NewUser(ar AuthRepoIFace, tg TokenGeneratorIFace) *User {
 	return &User{
-		authRepo:       NewAuthRepo(pg, cfg.SessTTL(), m),
-		tokenGenerator: tGen,
-	}, nil
-
+		authRepo:       ar,
+		tokenGenerator: tg,
+	}
 }
 
 // ============ UseCase ============

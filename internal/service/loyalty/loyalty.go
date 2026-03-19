@@ -3,8 +3,6 @@ package loyalty
 import (
 	"context"
 	"errors"
-	"gmart/internal/adapters/pgc"
-	"gmart/internal/config"
 	"gmart/internal/domain"
 	"gmart/internal/dto"
 	"gmart/internal/model/luhn"
@@ -30,10 +28,10 @@ type Loyalty struct {
 }
 
 // NewLoyalty создает новый объект манипулирования лояльностью
-func NewLoyalty(cfg config.Config, pg pgc.PgInstance, m LoyaltyMetrics) (*Loyalty, error) {
+func NewLoyalty(loyaltyRepo LoyaltyRepoIface) *Loyalty {
 	return &Loyalty{
-		repo: NewLoyaltyRepo(pg, m),
-	}, nil
+		repo: loyaltyRepo,
+	}
 }
 
 // ============ UseCase ============

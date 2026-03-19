@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"gmart/internal/adapters/pgc"
-	"gmart/internal/config"
 	"gmart/internal/domain"
 	"gmart/internal/dto"
 )
@@ -43,10 +41,10 @@ type Orders struct {
 }
 
 // NewOrders создает новый объект манипулирования заказами
-func NewOrders(cfg config.Config, pg pgc.PgInstance, m OrdersMetrics) (*Orders, error) {
+func NewOrders(ordersRepo OrdersRepoIFace) *Orders {
 	return &Orders{
-		ordersRepo: NewOrdersRepo(pg, m),
-	}, nil
+		ordersRepo: ordersRepo,
+	}
 }
 
 // ============ UseCase ============
