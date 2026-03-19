@@ -50,11 +50,11 @@ func Serve(ctx context.Context, arg *Input) error {
 	humaAPI := InitHuma(mux)
 
 	// Токен генератор/валидатор
-	tokenGenerator, err := auth.NewTokenGenerator(jwt.SigningMethodHS256, arg.Options.JwtSecretKey, arg.Options.JwtTtl)
+	tokenGenerator, err := auth.NewTokenGenerator(jwt.SigningMethodHS256, []byte(arg.Options.JwtSecretKey), arg.Options.JwtTtl)
 	if err != nil {
 		return fmt.Errorf("token generator create fail: %w", err)
 	}
-	tokenVerifier, err := auth.NewTokenVerifier(jwt.SigningMethodHS256, arg.Options.JwtSecretKey)
+	tokenVerifier, err := auth.NewTokenVerifier(jwt.SigningMethodHS256, []byte(arg.Options.JwtSecretKey))
 	if err != nil {
 		return fmt.Errorf("failed to create token verifier: %w", err)
 	}
