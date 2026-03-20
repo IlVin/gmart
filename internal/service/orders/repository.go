@@ -38,8 +38,8 @@ const sqlSelectOrdersByUserID = `
 const sqlAcquireNextOrder = `
 	UPDATE orders
 	SET accrualed_at = $1
-	WHERE id = (
-		SELECT id
+	WHERE order_number = (
+		SELECT order_number
 		FROM orders
 		WHERE status IN ('NEW', 'PROCESSING', 'REGISTERED')
 		  AND (accrualed_at IS NULL OR accrualed_at < $1 - INTERVAL '30 seconds')
