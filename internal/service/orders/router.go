@@ -8,6 +8,7 @@ import (
 )
 
 func (o *Orders) RegistryRoutes(api huma.API, tokenVerifier *auth.TokenVerifier) {
+	authMW := auth.NewAuthVerifierMiddleware(api, tokenVerifier)
 
 	// Handler POST /api/user/orders
 	huma.Register(api, huma.Operation{
@@ -26,10 +27,8 @@ func (o *Orders) RegistryRoutes(api huma.API, tokenVerifier *auth.TokenVerifier)
 			http.StatusUnprocessableEntity, // 422 — неверный формат номера заказа;
 			http.StatusInternalServerError, // 500 — внутренняя ошибка сервера.
 		},
-		Tags: []string{"Orders"},
-		Middlewares: huma.Middlewares{
-			auth.NewTokenVerifierMiddleware(api, tokenVerifier),
-		},
+		Tags:          []string{"Orders"},
+		Middlewares:   huma.Middlewares{authMW},
 		Security:      []map[string][]string{{"bearer": {}}},
 		DefaultStatus: 200,
 	}, o.ordersUploadHandler())
@@ -47,10 +46,8 @@ func (o *Orders) RegistryRoutes(api huma.API, tokenVerifier *auth.TokenVerifier)
 		Errors: []int{
 			http.StatusInternalServerError, // 500 — внутренняя ошибка сервера.
 		},
-		Tags: []string{"Orders"},
-		Middlewares: huma.Middlewares{
-			auth.NewTokenVerifierMiddleware(api, tokenVerifier),
-		},
-		Security: []map[string][]string{{"bearer": {}}},
+		Tags:        []string{"Orders"},
+		Middlewares: huma.Middlewares{authMW},
+		Security:    []map[string][]string{{"bearer": {}}},
 	}, o.ordersListHandler())
 }

@@ -41,6 +41,7 @@ import (
 type ctxKey int
 
 const UserID ctxKey = iota
+const bearerPrefix = "bearer "
 
 var (
 	ErrInvalidToken = errors.New("invalid token")
@@ -121,18 +122,19 @@ func NewTokenVerifier(method jwt.SigningMethod, verifyKey any) (*TokenVerifier, 
 	}, nil
 }
 
-func (v *TokenVerifier) ParseAuthorizationHeader(AuthorizationHeader string) (domain.UserID, error) {
-	if AuthorizationHeader == "" {
+func (v *TokenVerifier) ParseAuthorizationHeader(authHeader string) (domain.UserID, error) {
+
+	if len(authHeader) > len(bearerPrefix) && strings.EqualFold(authHeader[:len(bearerPrefix)], bearerPrefix) {
+		authHeader = authHeader[len(bearerPrefix):]
+	}
+
+	authHeader = strings.TrimSpace(authHeader)
+
+	if authHeader == "" {
 		return 0, ErrInvalidToken
 	}
 
-	// Разбиваем строку по пробелу
-	parts := strings.Split(AuthorizationHeader, " ")
-	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-		return 0, ErrInvalidToken
-	}
-
-	return v.Parse(domain.Token(parts[1]))
+	return v.Parse(domain.Token(authHeader))
 }
 
 // Parse парсит токен
@@ -193,7 +195,7 @@ func LoadRSAPublicKey(path string) (*rsa.PublicKey, error) {
 	return publicKey, nil
 }
 
-func NewTokenVerifierMiddleware(api huma.API, tokenVerifier *TokenVerifier) func(ctx huma.Context, next func(huma.Context)) {
+func NewAuthVerifierMiddleware(api huma.API, tokenVerifier *TokenVerifier) func(ctx huma.Context, next func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
 		userID, err := tokenVerifier.ParseAuthorizationHeader(ctx.Header("Authorization"))
 		if err != nil {

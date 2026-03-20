@@ -7,8 +7,8 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 )
 
-func (l *Loyalty) RegistryRoutes(api huma.API, vrf *auth.TokenVerifier) {
-	authMW := auth.NewTokenVerifierMiddleware(api, vrf)
+func (l *Loyalty) RegistryRoutes(api huma.API, tokenVerifier *auth.TokenVerifier) {
+	authMW := auth.NewAuthVerifierMiddleware(api, tokenVerifier)
 
 	// GET /api/user/balance
 	huma.Register(api, huma.Operation{
