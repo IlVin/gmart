@@ -1,0 +1,60 @@
+version: '3.8'
+
+networks:
+  anet:
+    driver: bridge
+
+services:
+  gmart_db:
+    image: gmart_postgres:latest
+    container_name: gmart_db
+    networks:
+      - anet
+    ports:
+      - "2200:5432" # Хост 2200 -> Контейнер 5432
+    environment:
+      - POSTGRES_USER=gmart
+      - POSTGRES_PASSWORD=gmart_pswd
+      - POSTGRES_DB=gmart
+
+  accrual_db:
+    image: accrual_postgres:latest
+    container_name: accrual_db
+    networks:
+      - anet
+    ports:
+      - "2201:5432" # Хост 2201 -> Контейнер 5432
+    environment:
+      - POSTGRES_USER=accrual
+      - POSTGRES_PASSWORD=accrual_pswd
+      - POSTGRES_DB=accrual
+
+  accrual_service:
+    image: accrual:latest
+    container_name: accrual_service
+    networks:
+      - anet
+    ports:
+      - "2203:8080" # Хост 2203 -> Контейнер 8080
+    depends_on:
+      accrual_db:
+        condition: service_healthy
+    environment:
+      - DATABASE_URI=postgres://accrual:accrual_pswd@accrual_db:5432/accrual
+
+  gmart_service:
+    image: gmart:latest
+    container_name: gmart_service
+    networks:
+      - anet
+    ports:
+      - "2204:8080" # Хост 2204 -> Контейнер 8080
+    depends_on:
+      gmart_db:
+        condition: service_healthy
+      accrual_service:
+        condition: service_healthy
+    environment:
+      - RUN_ADDRESS=:8080
+      - DATABASE_URI=postgres://gmart:gmart_pswd@gmart_db:5432/gmart
+      - ACCRUAL_SYSTEM_ADDRESS=http://accrual_service:8080

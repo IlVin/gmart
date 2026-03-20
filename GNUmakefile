@@ -3,31 +3,28 @@ WORKDIR=.
 BINARY_NAME=${WORKDIR}/cmd/gophermart/gophermart
 MAIN_PATH=${WORKDIR}/cmd/gophermart/main.go # Путь может отличаться, проверь его
 COVER_FILE=coverage.out
-DOCKER_IMG=shortener:latest
+DOCKER_IMG=gmart:latest
 
-.PHONY: all build run test cover clean lint help
+.PHONY: all build up down test cover clean lint help
 
 # Команда по умолчанию
 all: test build
 
+up:
+	docker compose -f 'infra/compose.yml' up
+
+down:
+	docker compose -f 'infra/compose.yml' down
+
 build:
+	$(MAKE) -C infra/database/accrual build
+	$(MAKE) -C infra/database/gmart build
+	$(MAKE) -C infra/accrual build
 	@echo "Building binary..."
 	go generate ./...
 	CGO_ENABLED=0 GOOS=linux go build -o $(BINARY_NAME) $(MAIN_PATH)
-
-## Docker-build: Сборка образа на базе пустого scratch
-docker-build: build
 	@echo "Building scratch Docker image..."
 	docker build -f Dockerfile -t $(DOCKER_IMG) .
-
-docker-run:
-	@echo "Starting scratch container on port 8090..."
-	docker run --rm --network host --env-file .env $(DOCKER_IMG)
-
-## Run: Быстрый запуск приложения
-run:
-	@echo "Starting application..."
-	go run $(MAIN_PATH)
 
 ## Test: Запуск всех тестов с проверкой на Race Condition
 test:

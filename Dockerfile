@@ -10,9 +10,6 @@ COPY ./.env /.env
 # Их можно скопировать из хостовой системы, если нужно:
 # COPY /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
-# Копируем конфиг .env (если он используется для параметров)
-COPY .env /.env
-
 # Экспонируем порт
 EXPOSE 8080
 
