@@ -5,7 +5,6 @@ import (
 	"gmart/internal/adapters/metrics"
 	"gmart/internal/adapters/pgc"
 	"gmart/internal/dto"
-	"gmart/internal/model/jserr"
 	"gmart/internal/serve"
 	"log/slog"
 	"net/http"
@@ -45,16 +44,6 @@ func FixEnv() {
 }
 
 func main() {
-
-	// ХАК: тесты не понимают Content-Type: application/problem+json (RFC 9457)
-	// Поэтому заменяем Content-Type: application/problem+json на Content-Type: application/json
-	huma.NewError = func(status int, message string, errs ...error) huma.StatusError {
-		return &jserr.JsError{
-			Status: status,
-			Title:  message,
-		}
-	}
-
 	// Загрузка .env
 	_ = godotenv.Load()
 
