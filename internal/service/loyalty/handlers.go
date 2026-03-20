@@ -72,6 +72,10 @@ func (l *Loyalty) withdrawHandler() func(ctx context.Context, in *withdrawInput)
 		err := l.Withdraw(ctx, userID, in.Body.Order, in.Body.Sum)
 		if err != nil {
 			if errors.Is(err, ErrInvalidOrderNumber) {
+				slog.Error("ErrInvalidOrderNumber",
+					slog.Any("input", in),
+					slog.Any("err", err),
+				)
 				return nil, huma.Error422UnprocessableEntity("неверный формат номера заказа")
 			}
 
