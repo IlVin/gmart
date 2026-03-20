@@ -225,11 +225,12 @@ func (h *pgInstance) Close() error {
 
 // HandleError реагирует на ошибки
 func (h *pgInstance) HandleError(err error) error {
-	if err == nil {
+	if err == nil || errors.Is(err, pgx.ErrNoRows) {
 		h.failures.Reset()
 		h.Online()
 		return nil
 	}
+
 	if h.failures.Inc(err) {
 		h.Offline()
 	}

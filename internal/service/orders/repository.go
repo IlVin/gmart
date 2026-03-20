@@ -42,7 +42,7 @@ const sqlAcquireNextOrder = `
 		SELECT order_number
 		FROM orders
 		WHERE status IN ('NEW', 'PROCESSING', 'REGISTERED')
-		  AND (accrualed_at IS NULL OR accrualed_at < $1 - INTERVAL '30 seconds')
+		  AND (accrualed_at IS NULL OR accrualed_at < $1::timestamptz - INTERVAL '30 seconds')
 		ORDER BY uploaded_at ASC
 		FOR UPDATE SKIP LOCKED
 		LIMIT 1

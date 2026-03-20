@@ -86,7 +86,7 @@ func Serve(ctx context.Context, arg *Input) error {
 
 	// 3. Запускаем воркеры в отдельной горутине
 	// Run внутри себя сделает wg.Add и в конце wg.Wait
-	worker.Run(ctx, 10)
+	worker.Run(ctx, 3)
 
 	// Настройка HTTP сервера
 	srv := &http.Server{
