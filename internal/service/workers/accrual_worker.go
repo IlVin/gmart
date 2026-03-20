@@ -24,6 +24,17 @@ type WorkerRepoIFace interface {
 	UpdateOrderStatus(ctx context.Context, orderNumber domain.OrderNumber, orderStatus domain.OrderStatus, accrual domain.Amount) error
 }
 
+type WorkerMetrics interface {
+	// Фиксирует результат итерации воркера (success, error, timeout, no_content)
+	IncProcessed(result string)
+
+	// Записывает длительность запроса к Accrual Service с кодом ответа
+	ObserveRequest(code string, duration time.Duration)
+
+	// Специфичный счетчик для 429 ошибки, чтобы видеть плотность лимитов на графике
+	IncRateLimit()
+}
+
 type AccrualResponse struct {
 	Order   domain.OrderNumber `json:"order"`
 	Status  domain.OrderStatus `json:"status"`
@@ -38,14 +49,16 @@ type AccrualWrk struct {
 	chWakeUp          chan struct{} // сигнальный канал для побудки
 	sleepUntil        atomic.Uint64
 	repo              WorkerRepoIFace
+	metrics           WorkerMetrics
 	httpClient        *http.Client
 	accrualServiceURL url.URL
 }
 
-func NewAccrualWrk(repo WorkerRepoIFace, wakeUpChan chan struct{}, accrualServiceURL url.URL) *AccrualWrk {
+func NewAccrualWrk(repo WorkerRepoIFace, m WorkerMetrics, wakeUpChan chan struct{}, accrualServiceURL url.URL) *AccrualWrk {
 	return &AccrualWrk{
 		chWakeUp:          wakeUpChan,
 		repo:              repo,
+		metrics:           m,
 		accrualServiceURL: accrualServiceURL,
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
@@ -139,31 +152,60 @@ func (a *AccrualWrk) doWork(ctx context.Context) error {
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
+		if a.metrics != nil {
+			a.metrics.IncProcessed("error")
+		}
 		return fmt.Errorf("create request fail (%s): %w", orderNumber, err)
 	}
 
+	start := time.Now()
 	resp, err := a.httpClient.Do(req)
 	if err != nil {
+		if a.metrics != nil {
+			a.metrics.IncProcessed("error")
+		}
 		return fmt.Errorf("accrual service unreachable (%s): %w", orderNumber, err)
 	}
 	defer resp.Body.Close()
+
+	if a.metrics != nil {
+		a.metrics.ObserveRequest(strconv.Itoa(resp.StatusCode), time.Since(start))
+	}
 
 	switch resp.StatusCode {
 
 	case http.StatusOK:
 		var res AccrualResponse
 		if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+			if a.metrics != nil {
+				a.metrics.IncProcessed("error")
+			}
 			return fmt.Errorf("accrual decode fail (%s): %w", orderNumber, err)
 		}
 		// Обновляем статус и баллы в БД
-		return a.repo.UpdateOrderStatus(ctx, orderNumber, res.Status, res.Accrual)
+		err = a.repo.UpdateOrderStatus(ctx, orderNumber, res.Status, res.Accrual)
+		if a.metrics != nil {
+			if err == nil {
+				a.metrics.IncProcessed("success")
+			} else {
+				a.metrics.IncProcessed("error")
+			}
+		}
+		return err
 
 	case http.StatusNoContent:
 		// заказ не зарегистрирован в системе расчёта
 		slog.Warn("order not found in accrual", "order", orderNumber)
+		if a.metrics != nil {
+			a.metrics.IncProcessed("no_content")
+		}
 		return nil
 
 	case http.StatusTooManyRequests:
+		if a.metrics != nil {
+			a.metrics.IncRateLimit()
+			a.metrics.IncProcessed("rate_limit")
+		}
 		retryAfter, _ := strconv.Atoi(resp.Header.Get("Retry-After"))
 		if retryAfter <= 0 {
 			retryAfter = 60
@@ -172,10 +214,16 @@ func (a *AccrualWrk) doWork(ctx context.Context) error {
 		return fmt.Errorf("rate limited: retry after %d seconds (%s)", retryAfter, orderNumber)
 
 	case http.StatusInternalServerError:
+		if a.metrics != nil {
+			a.metrics.IncProcessed("error_500")
+		}
 		a.sleepUntil.Store(uint64(time.Now().Add(15 * time.Second).Unix()))
 		return errors.New("internal server error")
 
 	default:
+		if a.metrics != nil {
+			a.metrics.IncProcessed("error_other")
+		}
 		return fmt.Errorf("unexpected status code (%s): %d", orderNumber, resp.StatusCode)
 	}
 }
