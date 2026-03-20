@@ -11,7 +11,9 @@ import (
 	"gmart/internal/service/loyalty"
 	"gmart/internal/service/orders"
 	"gmart/internal/service/user"
+	"gmart/internal/service/workers"
 	"net/http"
+	"net/url"
 	"time"
 
 	"log/slog"
@@ -49,6 +51,13 @@ func Serve(ctx context.Context, arg *Input) error {
 	mux := http.NewServeMux()
 	humaAPI := InitHuma(mux)
 
+	wakeUpChan := make(chan struct{}, 1)
+
+	accrualURL, err := url.Parse(arg.Options.AccrualSystemAddress)
+	if err != nil {
+		return fmt.Errorf("cannot parse Accrual Sustem Address: %w", err)
+	}
+
 	// Токен генератор/валидатор
 	tokenGenerator, err := auth.NewTokenGenerator(jwt.SigningMethodHS256, []byte(arg.Options.JwtSecretKey), arg.Options.JwtTtl)
 	if err != nil {
@@ -68,11 +77,16 @@ func Serve(ctx context.Context, arg *Input) error {
 	user := user.NewUser(authRepo, tokenGenerator)
 	orders := orders.NewOrders(ordersRepo)
 	loyalty := loyalty.NewLoyalty(loyaltyRepo)
+	worker := workers.NewAccrualWrk(ordersRepo, metrics.NewForWorkers(arg.MetricsReg), wakeUpChan, accrualURL)
 
 	// Регистрация роутингов
 	user.RegistryRoutes(humaAPI)
 	orders.RegistryRoutes(humaAPI, tokenVerifier)
 	loyalty.RegistryRoutes(humaAPI, tokenVerifier)
+
+	// 3. Запускаем воркеры в отдельной горутине
+	// Run внутри себя сделает wg.Add и в конце wg.Wait
+	worker.Run(ctx, 10)
 
 	// Настройка HTTP сервера
 	srv := &http.Server{
@@ -110,6 +124,8 @@ func Serve(ctx context.Context, arg *Input) error {
 			return fmt.Errorf("forced shutdown: %w", err)
 		}
 		slog.Info("Server stopped gracefully")
+
+		worker.Shutdown()
 	}
 
 	return nil

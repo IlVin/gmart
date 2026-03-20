@@ -80,10 +80,6 @@ func run() error {
 
 	cli := humacli.New(func(hooks humacli.Hooks, options *dto.CLIOptions) {
 		hooks.OnStart(func() {
-			mux := http.NewServeMux()
-			humaAPI := InitHuma(mux, options)
-			slog.Info("HUMA", slog.Any("api", humaAPI))
-
 			slog.Info("Starting server",
 				slog.String("RunAddress", options.RunAddress),
 			)

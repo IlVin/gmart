@@ -51,10 +51,10 @@ type AccrualWrk struct {
 	repo              WorkerRepoIFace
 	metrics           WorkerMetrics
 	httpClient        *http.Client
-	accrualServiceURL url.URL
+	accrualServiceURL *url.URL
 }
 
-func NewAccrualWrk(repo WorkerRepoIFace, m WorkerMetrics, wakeUpChan chan struct{}, accrualServiceURL url.URL) *AccrualWrk {
+func NewAccrualWrk(repo WorkerRepoIFace, m WorkerMetrics, wakeUpChan chan struct{}, accrualServiceURL *url.URL) *AccrualWrk {
 	return &AccrualWrk{
 		chWakeUp:          wakeUpChan,
 		repo:              repo,
@@ -136,7 +136,9 @@ func (a *AccrualWrk) Run(ctx context.Context, wrkCount int) {
 			}
 		}()
 	}
+}
 
+func (a *AccrualWrk) Shutdown() {
 	a.wg.Wait()
 }
 
