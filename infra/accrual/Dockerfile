@@ -7,7 +7,7 @@ RUN apk add --no-cache curl
 # Копируем наш предварительно собранный статичный бинарник
 COPY ./accrual_linux_amd64 /accrual_linux_amd64
 
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=1s --start-period=1s --retries=5 \
   CMD curl -f http://localhost:8080/api/orders/583612753 || exit 1
 
 # Экспонируем порт

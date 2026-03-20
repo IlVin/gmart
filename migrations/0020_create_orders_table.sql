@@ -9,7 +9,7 @@
         accrualed_at  TIMESTAMPTZ DEFAULT NULL,                          -- Дата последнего обращения к accrual сервису
 
         CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        CONSTRAINT check_status CHECK (status IN ('NEW', 'PROCESSING', 'INVALID', 'PROCESSED'))
+        CONSTRAINT check_status CHECK (status IN ('NEW', 'PROCESSING', 'INVALID', 'PROCESSED', 'REGISTERED'))
     );
 
     -- Уникальный индекс для номера заказа.

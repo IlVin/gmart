@@ -5,16 +5,27 @@ MAIN_PATH=${WORKDIR}/cmd/gophermart/main.go # Путь может отличат
 COVER_FILE=coverage.out
 DOCKER_IMG=gmart:latest
 
+COMPOSE_FILE = infra/compose.yml
+
 .PHONY: all build up down test cover clean lint help
 
 # Команда по умолчанию
 all: test build
 
+run: build up
+	@echo "Build & run..."
+
 up:
-	docker compose -f 'infra/compose.yml' up
+	docker compose -f $(COMPOSE_FILE) up -d
 
 down:
-	docker compose -f 'infra/compose.yml' down
+	docker compose -f $(COMPOSE_FILE) down
+
+logs:
+	docker compose -f $(COMPOSE_FILE) logs -f
+
+ps:
+	docker compose -f $(COMPOSE_FILE) ps
 
 build:
 	$(MAKE) -C infra/database/accrual build

@@ -41,7 +41,7 @@ const sqlAcquireNextOrder = `
 	WHERE id = (
 		SELECT id
 		FROM orders
-		WHERE status IN ('NEW', 'PROCESSING')
+		WHERE status IN ('NEW', 'PROCESSING', 'REGISTERED')
 		  AND (accrualed_at IS NULL OR accrualed_at < $1 - INTERVAL '30 seconds')
 		ORDER BY uploaded_at ASC
 		FOR UPDATE SKIP LOCKED
