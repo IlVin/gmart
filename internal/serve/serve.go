@@ -136,8 +136,6 @@ func InitHuma(mux *http.ServeMux) huma.API {
 	// API with huma
 	humaConfig := huma.DefaultConfig("GopherMart API", "1.0.0")
 
-	// humaConfig.DocsRenderer = huma.DocsRendererSwaggerUI
-
 	humaConfig.Formats["text/plain"] = huma.DefaultFormats["text/plain"]
 
 	humaConfig.Components = &huma.Components{
@@ -153,5 +151,22 @@ func InitHuma(mux *http.ServeMux) huma.API {
 
 	api := humago.New(mux, humaConfig)
 
-	return api
+	grp := huma.NewGroup(api)
+
+	grp.UseTransformer(func(ctx huma.Context, status string, v any) (any, error) {
+		// Проверяем статус-код (Huma передает его как строку "422 Unprocessable Entity")
+		// Или можно проверить через ctx.Status()
+		if ctx.Status() == http.StatusUnprocessableEntity {
+			slog.Warn("Huma Validation Error (422)",
+				slog.Any("ctx", ctx),
+				slog.String("method", ctx.Method()),
+				slog.Any("details", v), // v содержит структуру huma.Error или []huma.ErrorDetail
+			)
+		}
+
+		// Возвращаем объект без изменений, чтобы Huma отправила его клиенту
+		return v, nil
+	})
+
+	return grp
 }
