@@ -64,12 +64,10 @@ type withdrawResponse struct {
 
 func (l *Loyalty) withdrawHandler() func(ctx context.Context, in *withdrawInput) (*withdrawResponse, error) {
 	return func(ctx context.Context, in *withdrawInput) (*withdrawResponse, error) {
-		slog.Info("withdrawHandler")
 		userID, ok := ctx.Value(auth.UserID).(domain.UserID)
 		if !ok {
 			return nil, huma.Error401Unauthorized("пользователь не авторизован")
 		}
-		slog.Info("withdrawHandler", slog.Any("userID", userID))
 		err := l.Withdraw(ctx, userID, in.Body.Order, in.Body.Sum)
 		slog.Info("withdrawHandler", slog.Any("err", err))
 		if err != nil {

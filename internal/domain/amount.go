@@ -14,11 +14,13 @@ type Amount uint64
 func (a Amount) Schema(r huma.Registry) *huma.Schema {
 	multipleOf := 0.01
 	return &huma.Schema{
-		Type:        "number",
-		Format:      "double",
+		AnyOf: []*huma.Schema{
+			{Type: "number", Format: "double"},
+			{Type: "integer"},
+		},
 		MultipleOf:  &multipleOf,
-		Description: "Денежная сумма в формате 1.23",
-		Examples:    []any{123.45},
+		Description: "Денежная сумма (например, 395.21 или 400)",
+		Examples:    []any{395.21},
 	}
 }
 
@@ -48,7 +50,7 @@ func (a Amount) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON принимает рубли из JSON и сохраняет как копейки
 func (a *Amount) UnmarshalJSON(data []byte) error {
 	// Убираем кавычки и пробелы
-	d := bytes.Trim(data, "\" ")
+	d := bytes.Trim(data, "\" \t\n\r")
 
 	if len(d) == 0 || bytes.Equal(d, []byte("null")) {
 		*a = 0

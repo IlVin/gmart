@@ -42,7 +42,7 @@ func TestAmount_UnmarshalJSON(t *testing.T) {
 		{"empty", "", 0, false},
 		{"null", "null", 0, false},
 		{"integer", "100", 10000, false},
-		{"float with 2 digits", "10.55", 1055, false},
+		{"float with 2 digits", "	395.21	", 39521, false},
 		{"float with 1 digit", "10.5", 1050, false},
 		{"quoted string", `"10.50"`, 1050, false},
 		{"extra zero tolerance", "10.5000", 1050, false},
