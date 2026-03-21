@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS balances (
     updated_at  TIMESTAMPTZ DEFAULT NOW(),
     
     -- Главная бизнес-проверка: баланс не может быть отрицательным
-    CONSTRAINT check_balance_not_negative CHECK (accrual - withdrawn >= 0)
+    -- CONSTRAINT check_balance_not_negative CHECK (accrual - withdrawn >= 0)
 );
 
 -- 2. Таблица списаний
