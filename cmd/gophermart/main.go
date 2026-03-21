@@ -5,7 +5,6 @@ import (
 	"gmart/internal/adapters/metrics"
 	"gmart/internal/adapters/pgc"
 	"gmart/internal/dto"
-	"gmart/internal/model/jserr"
 	"gmart/internal/serve"
 	"log/slog"
 	"net/http"
@@ -45,15 +44,6 @@ func FixEnv() {
 }
 
 func main() {
-
-	// ХАК: тесты не понимают Content-Type: application/problem+json (RFC 9457)
-	// Поэтому заменяем Content-Type: application/problem+json на Content-Type: application/json
-	huma.NewError = func(status int, message string, errs ...error) huma.StatusError {
-		return &jserr.JsError{
-			Status: status,
-			Title:  message,
-		}
-	}
 
 	// Загрузка .env
 	_ = godotenv.Load()
@@ -129,20 +119,6 @@ func run() error {
 
 	// Run the CLI. When passed no commands, it starts the server.
 	cli.Run()
-
-	//	// Конфигурация
-	//	cmdArgs := os.Args[1:]
-	//	cfg := config.NewConfig()
-	//	cfg, err := cfg.Init(
-	//		config.WithEnv(),
-	//		config.WithCmdArgs(&cmdArgs),
-	//	)
-	//	if err != nil {
-	//		return fmt.Errorf("failed to initialize config object: %w", err)
-	//	}
-	//	slog.Info("configuration initialized",
-	//		slog.String("version", cfg.Version()),
-	//	)
 
 	return nil
 }
