@@ -42,22 +42,23 @@ type AccrualResponse struct {
 }
 
 // Если в БД не осталось работы, то воркер идет спать на это время
-const sleepDuration time.Duration = 1 * time.Second
+const sleepDuration time.Duration = 1000 * time.Millisecond
 
 type AccrualWrk struct {
 	wg                sync.WaitGroup
-	chWakeUp          chan struct{} // сигнальный канал для побудки
-	sleepUntil        atomic.Uint64
+	sleepUntilMs      atomic.Int64
+	cond              *sync.Cond
 	repo              WorkerRepoIFace
 	metrics           WorkerMetrics
 	httpClient        *http.Client
 	accrualServiceURL *url.URL
+	isShutdown        atomic.Bool
 }
 
-func NewAccrualWrk(repo WorkerRepoIFace, m WorkerMetrics, wakeUpChan chan struct{}, accrualServiceURL *url.URL) *AccrualWrk {
+func NewAccrualWrk(repo WorkerRepoIFace, m WorkerMetrics, accrualServiceURL *url.URL) *AccrualWrk {
 	return &AccrualWrk{
-		chWakeUp:          wakeUpChan,
 		repo:              repo,
+		cond:              sync.NewCond(&sync.Mutex{}),
 		metrics:           m,
 		accrualServiceURL: accrualServiceURL,
 		httpClient: &http.Client{
@@ -66,43 +67,42 @@ func NewAccrualWrk(repo WorkerRepoIFace, m WorkerMetrics, wakeUpChan chan struct
 	}
 }
 
+func (a *AccrualWrk) nowMs() int64 {
+	return time.Now().UnixMilli()
+}
+
 // wrkSleep здесь спят безработные воркеры
-func (a *AccrualWrk) wrkSleep(ctx context.Context) error {
-	until := time.Unix(int64(a.sleepUntil.Load()), 0)
-	remaining := time.Until(until)
-
-	delay := sleepDuration
-	if remaining > delay {
-		delay = remaining
+func (a *AccrualWrk) wrkSleep(ctx context.Context) {
+	a.cond.L.Lock()
+	for a.sleepUntilMs.Load() > a.nowMs() && !a.isShutdown.Load() {
+		a.cond.Wait() // Воркер спит здесь и не потребляет CPU
 	}
-
-	timer := time.NewTimer(delay)
-	defer timer.Stop()
-
-	// Спим пока не придет сигнал
-	select {
-	case _, ok := <-a.chWakeUp:
-		if ok {
-			return nil
-		}
-		return errors.New("wake up chan is closed")
-	case <-timer.C:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	a.cond.L.Unlock()
 }
 
 // WakeUp будит один воркер, чтобы тот пошел в БД и взял джобу
 func (a *AccrualWrk) WakeUp() {
-	select {
-	case a.chWakeUp <- struct{}{}:
-	default:
-	}
+	a.cond.Signal()
 }
 
 // Run запускает воркеры в работу
 func (a *AccrualWrk) Run(ctx context.Context, wrkCount int) {
+	// Запускаем тикер
+	go func() {
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				a.WakeUp() // Каждую секунду будим по одному воркеру
+			case <-ctx.Done():
+				// Тут не можем вызвать Shutdown, т.к. он вызывает a.wg.Wait() (Shutdown нужно вызывать в основном потоке для Graceful Shutdown)
+				a.isShutdown.Store(true)
+				a.cond.Broadcast()
+				return
+			}
+		}
+	}()
 
 	// Запускаем пул воркеров
 	for range wrkCount {
@@ -113,37 +113,40 @@ func (a *AccrualWrk) Run(ctx context.Context, wrkCount int) {
 			for {
 				// Делаем работу
 				err := a.doWork(ctx)
-				if err == nil {
-					continue
+
+				// Проверяем завершение работы
+				if a.isShutdown.Load() {
+					return
 				}
-				if !errors.Is(err, orders.ErrQueueIsEmpty) {
-					slog.Warn("do work fail", slog.Any("err", err))
+
+				// Если произошла ошибка, то тоже надо поспать
+				if err != nil {
+					if a.sleepUntilMs.Load() <= a.nowMs() {
+						a.sleepUntilMs.Store(a.nowMs() + sleepDuration.Milliseconds())
+					}
+					if !errors.Is(err, orders.ErrQueueIsEmpty) {
+						slog.Warn("do work fail", slog.Any("err", err))
+					}
+				} else if a.sleepUntilMs.Load() <= a.nowMs() {
+					continue
 				}
 
 				// Спим
-				for {
-					err := a.wrkSleep(ctx)
-					if err != nil {
-						if !errors.Is(err, context.Canceled) {
-							slog.Warn("sleep cancelled", slog.Any("err", err))
-						}
-						return
-					}
-					if a.sleepUntil.Load() < uint64(time.Now().Unix()) {
-						break
-					}
-				}
+				a.wrkSleep(ctx)
 			}
 		}()
 	}
 }
 
 func (a *AccrualWrk) Shutdown() {
+	a.isShutdown.Store(true)
+	a.cond.Broadcast()
 	a.wg.Wait()
 }
 
 // doWork фоновый воркер
 func (a *AccrualWrk) doWork(ctx context.Context) error {
+
 	orderNumber, _, err := a.repo.AcquireNextOrder(ctx)
 	if err != nil {
 		return err
@@ -212,14 +215,18 @@ func (a *AccrualWrk) doWork(ctx context.Context) error {
 		if retryAfter <= 0 {
 			retryAfter = 60
 		}
-		a.sleepUntil.Store(uint64(time.Now().Add(time.Duration(retryAfter) * time.Second).Unix()))
-		return fmt.Errorf("rate limited: retry after %d seconds (%s)", retryAfter, orderNumber)
+		a.sleepUntilMs.Store(
+			a.nowMs() +
+				(time.Duration(retryAfter) * time.Second).Milliseconds())
+		return fmt.Errorf("rate limited: retry after %d s (%s)", retryAfter, orderNumber)
 
 	case http.StatusInternalServerError:
 		if a.metrics != nil {
 			a.metrics.IncProcessed("error_500")
 		}
-		a.sleepUntil.Store(uint64(time.Now().Add(15 * time.Second).Unix()))
+		a.sleepUntilMs.Store(
+			a.nowMs() +
+				(time.Duration(15) * time.Second).Milliseconds())
 		return errors.New("internal server error")
 
 	default:

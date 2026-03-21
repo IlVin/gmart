@@ -51,8 +51,6 @@ func Serve(ctx context.Context, arg *Input) error {
 	mux := http.NewServeMux()
 	humaAPI := InitHuma(mux)
 
-	wakeUpChan := make(chan struct{}, 1)
-
 	accrualURL, err := url.Parse(arg.Options.AccrualSystemAddress)
 	if err != nil {
 		return fmt.Errorf("cannot parse Accrual Sustem Address: %w", err)
@@ -77,7 +75,7 @@ func Serve(ctx context.Context, arg *Input) error {
 	user := user.NewUser(authRepo, tokenGenerator)
 	orders := orders.NewOrders(ordersRepo)
 	loyalty := loyalty.NewLoyalty(loyaltyRepo)
-	worker := workers.NewAccrualWrk(ordersRepo, metrics.NewForWorkers(arg.MetricsReg), wakeUpChan, accrualURL)
+	worker := workers.NewAccrualWrk(ordersRepo, metrics.NewForWorkers(arg.MetricsReg), accrualURL)
 
 	// Регистрация роутингов
 	user.RegistryRoutes(humaAPI)
