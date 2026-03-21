@@ -35,9 +35,9 @@ const sqlWithdraw = `
 	WITH 
 	-- 1. Проверяем наличие пользователя и достаточность средств
 	check_funds AS (
-		SELECT $1 as user_id
+		SELECT $1::bigint as user_id
 		FROM (SELECT 1) AS dual
-		WHERE (SELECT COALESCE(SUM(accrual - withdrawn), 0) FROM balances WHERE user_id = $1) >= $2
+		WHERE (SELECT COALESCE(SUM(accrual - withdrawn), 0) FROM balances WHERE user_id = $1::bigint) >= $2
 	),
 	-- 2. Пробуем вставить списание. Вставляем только если check_funds вернул строку.
 	new_withdrawal AS (
@@ -50,7 +50,7 @@ const sqlWithdraw = `
 	-- 3. Обновляем баланс только если запись в withdrawals успешно создана
 	upd_balance AS (
 		INSERT INTO balances (user_id, accrual, withdrawn, updated_at)
-		SELECT $1, 0, $2, $4::timestamptz
+		SELECT $1::bigint, 0, $2, $4::timestamptz
 		WHERE EXISTS (SELECT 1 FROM new_withdrawal)
 		ON CONFLICT (user_id) DO UPDATE
 		SET withdrawn = balances.withdrawn + EXCLUDED.withdrawn,
