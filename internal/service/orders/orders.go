@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"gmart/internal/domain"
-	"gmart/internal/dto"
 )
 
 //go:generate $GOPATH/bin/mockgen -source=$GOFILE -destination=orders_mock.go  -package=orders
@@ -18,14 +17,7 @@ type OrdersRepoIFace interface {
 	Upload(ctx context.Context, userID domain.UserID, orderNumber domain.OrderNumber) error
 
 	// List возвращает историю заказов конкретного пользователя.
-	List(ctx context.Context, userID domain.UserID) ([]dto.OrderItem, error)
-
-	// AcquireNextOrder извлекает следующий заказ для обработки (SKIP LOCKED).
-	// Используется воркерами для синхронизации с внешним API.
-	AcquireNextOrder(ctx context.Context) (domain.OrderNumber, domain.OrderStatus, error)
-
-	// UpdateOrderStatus фиксирует результат обработки заказа (статус и баллы).
-	UpdateOrderStatus(ctx context.Context, orderNumber domain.OrderNumber, orderStatus domain.OrderStatus, accrual domain.Amount) error
+	List(ctx context.Context, userID domain.UserID) ([]domain.Order, error)
 }
 
 // ============ Class ============
@@ -62,7 +54,7 @@ func (o *Orders) Upload(ctx context.Context, userID domain.UserID, orderNumber d
 }
 
 // List возвращает список загруженных пользователем заказов
-func (o *Orders) List(ctx context.Context, userID domain.UserID) (ordersList []dto.OrderItem, err error) {
+func (o *Orders) List(ctx context.Context, userID domain.UserID) (ordersList []domain.Order, err error) {
 
 	ordersList, err = o.ordersRepo.List(ctx, userID)
 	if err != nil {

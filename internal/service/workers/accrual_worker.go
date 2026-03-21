@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"gmart/internal/domain"
-	"gmart/internal/service/orders"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -24,7 +23,7 @@ type WorkerRepoIFace interface {
 	UpdateOrderStatus(ctx context.Context, orderNumber domain.OrderNumber, orderStatus domain.OrderStatus, accrual domain.Amount) error
 }
 
-type WorkerMetrics interface {
+type WorkerMetricsIFace interface {
 	// Фиксирует результат итерации воркера (success, error, timeout, no_content)
 	IncProcessed(result string)
 
@@ -49,20 +48,21 @@ type AccrualWrk struct {
 	sleepUntilMs      atomic.Int64
 	cond              *sync.Cond
 	repo              WorkerRepoIFace
-	metrics           WorkerMetrics
+	metrics           WorkerMetricsIFace
 	httpClient        *http.Client
 	accrualServiceURL *url.URL
 	isShutdown        atomic.Bool
 }
 
-func NewAccrualWrk(repo WorkerRepoIFace, m WorkerMetrics, accrualServiceURL *url.URL) *AccrualWrk {
+func NewAccrualWrk(repo WorkerRepoIFace, m WorkerMetricsIFace, accrualServiceURL *url.URL) *AccrualWrk {
 	return &AccrualWrk{
 		repo:              repo,
 		cond:              sync.NewCond(&sync.Mutex{}),
 		metrics:           m,
 		accrualServiceURL: accrualServiceURL,
 		httpClient: &http.Client{
-			Timeout: 10 * time.Second,
+			Timeout:   10 * time.Second,
+			Transport: &http.Transport{MaxIdleConnsPerHost: 100},
 		},
 	}
 }
@@ -124,10 +124,11 @@ func (a *AccrualWrk) Run(ctx context.Context, wrkCount int) {
 					if a.sleepUntilMs.Load() <= a.nowMs() {
 						a.sleepUntilMs.Store(a.nowMs() + sleepDuration.Milliseconds())
 					}
-					if !errors.Is(err, orders.ErrQueueIsEmpty) {
+					if !errors.Is(err, ErrQueueIsEmpty) {
 						slog.Warn("do work fail", slog.Any("err", err))
 					}
 				} else if a.sleepUntilMs.Load() <= a.nowMs() {
+					a.WakeUp() // Сигналим спящим о том, что работа есть...
 					continue
 				}
 

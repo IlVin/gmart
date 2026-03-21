@@ -84,7 +84,7 @@ type ordersListInput struct {
 
 type orderListResponse struct {
 	Status int `status:"200"`
-	Body   []dto.OrderItem
+	Body   []domain.Order
 }
 
 // signUpHandler возвращает HUMA хэндлер регистрации нового пользователя

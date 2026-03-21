@@ -107,8 +107,8 @@ type withdrawalsInput struct {
 }
 
 type withdrawalsResponse struct {
-	Status int                  `status:"200"`
-	Body   []dto.WithdrawalItem `json:",omitempty"` // omitempty важен для 204
+	Status int                 `status:"200"`
+	Body   []domain.Withdrawal `json:",omitempty"` // omitempty важен для 204
 }
 
 func (l *Loyalty) getWithdrawalsHandler() func(ctx context.Context, in *withdrawalsInput) (*withdrawalsResponse, error) {

@@ -1,8 +1,9 @@
 package metrics
 
 import (
-	"gmart/internal/domain"
 	"time"
+
+	"gmart/internal/domain" // Добавляем импорт для domain.OrderStatus
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -12,12 +13,12 @@ type PrometheusOrdersMetrics struct {
 	uploadCounts    *prometheus.CounterVec
 	acquireAttempts *prometheus.CounterVec
 	listSize        prometheus.Histogram
-	finalizedCounts *prometheus.CounterVec
+	finalizedCounts *prometheus.CounterVec // Новая метрика для воркеров
 }
 
 func NewForOrders(reg prometheus.Registerer) *PrometheusOrdersMetrics {
 	dbBuckets := []float64{.001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5}
-	sizeBuckets := []float64{0, 5, 10, 20, 50, 100, 500}
+	sizeBuckets := []float64{0, 1, 5, 10, 20, 50, 100}
 
 	m := &PrometheusOrdersMetrics{
 		dbDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
@@ -50,11 +51,12 @@ func NewForOrders(reg prometheus.Registerer) *PrometheusOrdersMetrics {
 			Buckets:   sizeBuckets,
 		}),
 
+		// Реализация для воркеров: считаем сколько заказов перешло в конечный статус
 		finalizedCounts: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: "gmart",
 			Subsystem: "orders",
 			Name:      "finalized_total",
-			Help:      "Total number of orders that reached final status",
+			Help:      "Total number of orders reached terminal status (PROCESSED/INVALID)",
 		}, []string{"status"}),
 	}
 
@@ -62,17 +64,17 @@ func NewForOrders(reg prometheus.Registerer) *PrometheusOrdersMetrics {
 	return m
 }
 
-// ObserveDB записывает время выполнения запроса к БД
+// ObserveDB записывает время выполнения запроса к БД (Удовлетворяет обоим интерфейсам)
 func (m *PrometheusOrdersMetrics) ObserveDB(op OpType, d time.Duration) {
 	m.dbDuration.WithLabelValues(op.String()).Observe(d.Seconds())
 }
 
-// IncOrderUpload инкрементирует счетчик загрузок с результатом (new, conflict, exists)
+// IncOrderUpload (Для OrdersRepo)
 func (m *PrometheusOrdersMetrics) IncOrderUpload(result string) {
 	m.uploadCounts.WithLabelValues(result).Inc()
 }
 
-// IncAcquireAttempt
+// IncAcquireAttempt (Для WorkersRepo)
 func (m *PrometheusOrdersMetrics) IncAcquireAttempt(found bool) {
 	label := "false"
 	if found {
@@ -81,12 +83,12 @@ func (m *PrometheusOrdersMetrics) IncAcquireAttempt(found bool) {
 	m.acquireAttempts.WithLabelValues(label).Inc()
 }
 
-// ObserveListSize записывает количество найденных заказов
+// ObserveListSize записывает количество найденных заказов (Удовлетворяет обоим интерфейсам)
 func (m *PrometheusOrdersMetrics) ObserveListSize(size int) {
 	m.listSize.Observe(float64(size))
 }
 
-// IncOrderFinalized
+// IncOrderFinalized записывает переход заказа в финальное состояние (Для WorkersRepo)
 func (m *PrometheusOrdersMetrics) IncOrderFinalized(status domain.OrderStatus) {
-	m.finalizedCounts.WithLabelValues(status.String()).Inc()
+	m.finalizedCounts.WithLabelValues(string(status)).Inc()
 }

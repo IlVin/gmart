@@ -12,7 +12,6 @@ package orders
 import (
 	context "context"
 	domain "gmart/internal/domain"
-	dto "gmart/internal/dto"
 	reflect "reflect"
 
 	gomock "go.uber.org/mock/gomock"
@@ -42,27 +41,11 @@ func (m *MockOrdersRepoIFace) EXPECT() *MockOrdersRepoIFaceMockRecorder {
 	return m.recorder
 }
 
-// AcquireNextOrder mocks base method.
-func (m *MockOrdersRepoIFace) AcquireNextOrder(ctx context.Context) (domain.OrderNumber, domain.OrderStatus, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AcquireNextOrder", ctx)
-	ret0, _ := ret[0].(domain.OrderNumber)
-	ret1, _ := ret[1].(domain.OrderStatus)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
-}
-
-// AcquireNextOrder indicates an expected call of AcquireNextOrder.
-func (mr *MockOrdersRepoIFaceMockRecorder) AcquireNextOrder(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AcquireNextOrder", reflect.TypeOf((*MockOrdersRepoIFace)(nil).AcquireNextOrder), ctx)
-}
-
 // List mocks base method.
-func (m *MockOrdersRepoIFace) List(ctx context.Context, userID domain.UserID) ([]dto.OrderItem, error) {
+func (m *MockOrdersRepoIFace) List(ctx context.Context, userID domain.UserID) ([]domain.Order, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "List", ctx, userID)
-	ret0, _ := ret[0].([]dto.OrderItem)
+	ret0, _ := ret[0].([]domain.Order)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -71,20 +54,6 @@ func (m *MockOrdersRepoIFace) List(ctx context.Context, userID domain.UserID) ([
 func (mr *MockOrdersRepoIFaceMockRecorder) List(ctx, userID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockOrdersRepoIFace)(nil).List), ctx, userID)
-}
-
-// UpdateOrderStatus mocks base method.
-func (m *MockOrdersRepoIFace) UpdateOrderStatus(ctx context.Context, orderNumber domain.OrderNumber, orderStatus domain.OrderStatus, accrual domain.Amount) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateOrderStatus", ctx, orderNumber, orderStatus, accrual)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// UpdateOrderStatus indicates an expected call of UpdateOrderStatus.
-func (mr *MockOrdersRepoIFaceMockRecorder) UpdateOrderStatus(ctx, orderNumber, orderStatus, accrual any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateOrderStatus", reflect.TypeOf((*MockOrdersRepoIFace)(nil).UpdateOrderStatus), ctx, orderNumber, orderStatus, accrual)
 }
 
 // Upload mocks base method.

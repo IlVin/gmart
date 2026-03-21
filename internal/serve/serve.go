@@ -66,16 +66,23 @@ func Serve(ctx context.Context, arg *Input) error {
 		return fmt.Errorf("failed to create token verifier: %w", err)
 	}
 
+	// Metrics
+	mAuth := metrics.NewForAuth(arg.MetricsReg)
+	mOrders := metrics.NewForOrders(arg.MetricsReg)
+	mLoyalty := metrics.NewForLoyalty(arg.MetricsReg)
+	mWorkers := metrics.NewForWorkers(arg.MetricsReg)
+
 	// Repo
-	authRepo := user.NewAuthRepo(arg.Pg, arg.Options.SessionTtl, metrics.NewForAuth(arg.MetricsReg))
-	ordersRepo := orders.NewOrdersRepo(arg.Pg, metrics.NewForOrders(arg.MetricsReg))
-	loyaltyRepo := loyalty.NewLoyaltyRepo(arg.Pg, metrics.NewForLoyalty(arg.MetricsReg))
+	authRepo := user.NewAuthRepo(arg.Pg, arg.Options.SessionTtl, mAuth)
+	ordersRepo := orders.NewOrdersRepo(arg.Pg, mOrders)
+	loyaltyRepo := loyalty.NewLoyaltyRepo(arg.Pg, mLoyalty)
+	workersRepo := workers.NewWorkersRepo(arg.Pg, mOrders)
 
 	// Vertical Slices
 	user := user.NewUser(authRepo, tokenGenerator)
 	orders := orders.NewOrders(ordersRepo)
 	loyalty := loyalty.NewLoyalty(loyaltyRepo)
-	worker := workers.NewAccrualWrk(ordersRepo, metrics.NewForWorkers(arg.MetricsReg), accrualURL)
+	worker := workers.NewAccrualWrk(workersRepo, mWorkers, accrualURL)
 
 	// Регистрация роутингов
 	user.RegistryRoutes(humaAPI)

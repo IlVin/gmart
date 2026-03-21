@@ -6,56 +6,55 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-type PrometheusWorkerMetrics struct {
+type PrometheusWorkersMetrics struct {
 	processedTotal  *prometheus.CounterVec
-	accrualDuration *prometheus.HistogramVec
-	retryAfterCount prometheus.Counter
+	requestDuration *prometheus.HistogramVec
+	rateLimitHits   prometheus.Counter
 }
 
-func NewForWorkers(reg prometheus.Registerer) *PrometheusWorkerMetrics {
-	// Бакеты для внешнего HTTP запроса (от 10мс до 10сек)
-	accrualBuckets := []float64{.01, .05, .1, .25, .5, 1, 2.5, 5, 10}
+func NewForWorkers(reg prometheus.Registerer) *PrometheusWorkersMetrics {
+	// Букеты для внешних HTTP-запросов (обычно медленнее, чем БД)
+	httpBuckets := []float64{.05, .1, .25, .5, 1, 2.5, 5, 10}
 
-	m := &PrometheusWorkerMetrics{
+	m := &PrometheusWorkersMetrics{
 		processedTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: "gmart",
-			Subsystem: "accrual_worker",
-			Name:      "orders_processed_total",
-			Help:      "Total number of orders processed by worker with results",
-		}, []string{"result"}), // success, error, no_content, 500
+			Subsystem: "worker",
+			Name:      "processed_items_total",
+			Help:      "Total number of processed iterations by accrual worker",
+		}, []string{"result"}), // success, error, timeout, no_content, rate_limit
 
-		accrualDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		requestDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "gmart",
-			Subsystem: "accrual_worker",
-			Name:      "request_duration_seconds",
-			Help:      "Duration of accrual service HTTP requests",
-			Buckets:   accrualBuckets,
-		}, []string{"code"}), // 200, 204, 429, etc.
+			Subsystem: "worker",
+			Name:      "accrual_request_duration_seconds",
+			Help:      "Duration of requests to the external Accrual Service",
+			Buckets:   httpBuckets,
+		}, []string{"code"}),
 
-		retryAfterCount: prometheus.NewCounter(prometheus.CounterOpts{
+		rateLimitHits: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: "gmart",
-			Subsystem: "accrual_worker",
+			Subsystem: "worker",
 			Name:      "rate_limit_hits_total",
-			Help:      "Total number of 429 Too Many Requests received",
+			Help:      "Total number of 429 Too Many Requests received from external service",
 		}),
 	}
 
-	reg.MustRegister(m.processedTotal, m.accrualDuration, m.retryAfterCount)
-
+	reg.MustRegister(m.processedTotal, m.requestDuration, m.rateLimitHits)
 	return m
 }
 
-// IncProcessed фиксирует результат обработки (success, error, timeout)
-func (m *PrometheusWorkerMetrics) IncProcessed(result string) {
+// IncProcessed фиксирует результат итерации (success, error, timeout, no_content)
+func (m *PrometheusWorkersMetrics) IncProcessed(result string) {
 	m.processedTotal.WithLabelValues(result).Inc()
 }
 
-// ObserveRequest записывает время ответа сервиса начислений
-func (m *PrometheusWorkerMetrics) ObserveRequest(code string, d time.Duration) {
-	m.accrualDuration.WithLabelValues(code).Observe(d.Seconds())
+// ObserveRequest записывает длительность HTTP-запроса с кодом ответа
+func (m *PrometheusWorkersMetrics) ObserveRequest(code string, duration time.Duration) {
+	m.requestDuration.WithLabelValues(code).Observe(duration.Seconds())
 }
 
-// IncRateLimit фиксирует срабатывание Retry-After
-func (m *PrometheusWorkerMetrics) IncRateLimit() {
-	m.retryAfterCount.Inc()
+// IncRateLimit инкрементирует счетчик при получении 429 ошибки
+func (m *PrometheusWorkersMetrics) IncRateLimit() {
+	m.rateLimitHits.Inc()
 }

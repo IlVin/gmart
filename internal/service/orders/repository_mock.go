@@ -11,7 +11,6 @@ package orders
 
 import (
 	metrics "gmart/internal/adapters/metrics"
-	domain "gmart/internal/domain"
 	reflect "reflect"
 	time "time"
 
@@ -40,30 +39,6 @@ func NewMockOrdersMetrics(ctrl *gomock.Controller) *MockOrdersMetrics {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockOrdersMetrics) EXPECT() *MockOrdersMetricsMockRecorder {
 	return m.recorder
-}
-
-// IncAcquireAttempt mocks base method.
-func (m *MockOrdersMetrics) IncAcquireAttempt(found bool) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "IncAcquireAttempt", found)
-}
-
-// IncAcquireAttempt indicates an expected call of IncAcquireAttempt.
-func (mr *MockOrdersMetricsMockRecorder) IncAcquireAttempt(found any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IncAcquireAttempt", reflect.TypeOf((*MockOrdersMetrics)(nil).IncAcquireAttempt), found)
-}
-
-// IncOrderFinalized mocks base method.
-func (m *MockOrdersMetrics) IncOrderFinalized(status domain.OrderStatus) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "IncOrderFinalized", status)
-}
-
-// IncOrderFinalized indicates an expected call of IncOrderFinalized.
-func (mr *MockOrdersMetricsMockRecorder) IncOrderFinalized(status any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IncOrderFinalized", reflect.TypeOf((*MockOrdersMetrics)(nil).IncOrderFinalized), status)
 }
 
 // IncOrderUpload mocks base method.

@@ -5,40 +5,66 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"gmart/internal/adapters/metrics"
 	"gmart/internal/adapters/pgc"
 	"gmart/internal/domain"
-	"gmart/internal/dto"
 
 	"github.com/jackc/pgx/v5"
 )
 
 // SQL запросы
-const (
-	// Получаем вычисленный баланс и общую сумму списаний
-	sqlGetBalance = `
-		SELECT (accrual - withdrawn) AS current, withdrawn 
-		FROM balances 
-		WHERE user_id = $1
-	`
+const sqlGetBalance = `
+	SELECT (accrual - withdrawn) AS current, withdrawn 
+	FROM balances 
+	WHERE user_id = $1
+`
 
-	// Списание баллов. Триггер в БД сам проверит достаточность средств (constraint)
-	sqlWithdraw = `
+// Список списаний от новых к старым
+const sqlGetWithdrawals = `
+	SELECT order_number, amount, processed_at
+	FROM withdrawals
+	WHERE user_id = $1
+	ORDER BY processed_at DESC
+`
+
+// Списание баллов.
+const sqlWithdraw = `
+-- $1: user_id, $2: amount, $3: order_number, $4: now
+	WITH 
+	-- 1. Проверяем наличие пользователя и достаточность средств
+	check_funds AS (
+		SELECT $1 as user_id
+		FROM (SELECT 1) AS dual
+		WHERE (SELECT COALESCE(SUM(accrual - withdrawn), 0) FROM balances WHERE user_id = $1) >= $2
+	),
+	-- 2. Пробуем вставить списание. Вставляем только если check_funds вернул строку.
+	new_withdrawal AS (
 		INSERT INTO withdrawals (user_id, order_number, amount, processed_at)
-		VALUES ($1, $2, $3, $4)
-	`
-
-	// Список списаний от новых к старым
-	sqlGetWithdrawals = `
-		SELECT order_number, amount, processed_at
-		FROM withdrawals
-		WHERE user_id = $1
-		ORDER BY processed_at DESC
-	`
-)
+		SELECT user_id, $3, $2, $4::timestamptz 
+		FROM check_funds
+		ON CONFLICT (order_number) DO NOTHING
+		RETURNING order_number
+	),
+	-- 3. Обновляем баланс только если запись в withdrawals успешно создана
+	upd_balance AS (
+		INSERT INTO balances (user_id, accrual, withdrawn, updated_at)
+		SELECT $1, 0, $2, $4::timestamptz
+		WHERE EXISTS (SELECT 1 FROM new_withdrawal)
+		ON CONFLICT (user_id) DO UPDATE
+		SET withdrawn = balances.withdrawn + EXCLUDED.withdrawn,
+			updated_at = EXCLUDED.updated_at
+		RETURNING user_id
+	)
+	-- 4. Определяем статус для возврата в Go
+	SELECT
+		CASE
+			WHEN EXISTS (SELECT 1 FROM upd_balance) THEN 'success'
+			WHEN NOT EXISTS (SELECT 1 FROM check_funds) THEN 'no_money'
+			ELSE 'already_exists'
+		END as result;
+`
 
 var (
 	ErrInsufficientFunds = errors.New("insufficient balance")
@@ -67,7 +93,7 @@ func NewLoyaltyRepo(pg pgc.PgInstance, m LoyaltyMetrics) *LoyaltyRepo {
 
 // GetBalance возвращает текущий остаток и общую сумму списаний
 func (r *LoyaltyRepo) GetBalance(ctx context.Context, userID domain.UserID) (current domain.Amount, withdrawn domain.Amount, err error) {
-	start := time.Now()
+	start := r.now()
 	defer func() {
 		if r.metrics != nil {
 			r.metrics.ObserveDB(metrics.OpQuery, time.Since(start))
@@ -93,56 +119,65 @@ func (r *LoyaltyRepo) GetBalance(ctx context.Context, userID domain.UserID) (cur
 
 // Withdraw регистрирует списание баллов
 func (r *LoyaltyRepo) Withdraw(ctx context.Context, userID domain.UserID, order domain.OrderNumber, amount domain.Amount) error {
-	start := time.Now()
-	defer func() {
-		if r.metrics != nil {
-			r.metrics.ObserveDB(metrics.OpExec, time.Since(start))
-		}
-	}()
-
-	err := r.pg.PgPool(ctx, func(ctx context.Context, pool pgc.PgxPoolIface) error {
-		_, err := pool.Exec(ctx, sqlWithdraw, userID, order, amount, r.now())
-		return err
-	})
-
-	if err != nil {
-		// Проверка на отрицательный баланс (сработал CHECK в БД)
-		if strings.Contains(err.Error(), "check_balance_not_negative") {
-			if r.metrics != nil {
-				r.metrics.IncWithdrawal("insufficient_funds")
-			}
-			return ErrInsufficientFunds
-		}
-		// Проверка на дубликат номера заказа в списаниях
-		if strings.Contains(err.Error(), "withdrawals_order_number_key") {
-			if r.metrics != nil {
-				r.metrics.IncWithdrawal("conflict")
-			}
-			return ErrWithdrawConflict
-		}
-
-		slog.Error("db exec failed", "op", "LoyaltyRepo.Withdraw", "err", err, "user_id", userID, "order", order)
-		return fmt.Errorf("withdraw fail: %w", err)
-	}
-
-	if r.metrics != nil {
-		r.metrics.IncWithdrawal("success")
-		r.metrics.ObserveWithdrawalAmount(amount)
-	}
-
-	return nil
-}
-
-// GetWithdrawals возвращает историю списаний пользователя
-func (r *LoyaltyRepo) GetWithdrawals(ctx context.Context, userID domain.UserID) ([]dto.WithdrawalItem, error) {
-	start := time.Now()
+	start := r.now()
 	defer func() {
 		if r.metrics != nil {
 			r.metrics.ObserveDB(metrics.OpQuery, time.Since(start))
 		}
 	}()
 
-	result := make([]dto.WithdrawalItem, 0, 10)
+	var status string
+	err := r.pg.PgPool(ctx, func(ctx context.Context, pool pgc.PgxPoolIface) error {
+		return pool.QueryRow(ctx, sqlWithdraw, userID, amount, order, r.now()).Scan(&status)
+	})
+
+	if err != nil {
+		slog.Error("db query failed",
+			slog.String("op", "LoyaltyRepo.Withdraw"),
+			slog.Any("err", err),
+			slog.String("user_id", userID.String()),
+			slog.String("order", order.String()),
+		)
+		return fmt.Errorf("withdraw database error: %w", err)
+	}
+
+	// Обрабатываем бизнес-логику на основе статуса из БД
+	switch status {
+	case "success":
+		if r.metrics != nil {
+			r.metrics.IncWithdrawal("success")
+			r.metrics.ObserveWithdrawalAmount(amount)
+		}
+		return nil
+
+	case "no_money":
+		if r.metrics != nil {
+			r.metrics.IncWithdrawal("insufficient_funds")
+		}
+		return ErrInsufficientFunds
+
+	case "already_exists":
+		if r.metrics != nil {
+			r.metrics.IncWithdrawal("conflict")
+		}
+		return ErrWithdrawConflict
+
+	default:
+		slog.Error("unexpected withdraw status", "status", status, "user_id", userID)
+		return fmt.Errorf("unexpected withdraw status: %s", status)
+	}
+}
+
+// GetWithdrawals возвращает историю списаний пользователя
+func (r *LoyaltyRepo) GetWithdrawals(ctx context.Context, userID domain.UserID) ([]domain.Withdrawal, error) {
+	start := r.now()
+	defer func() {
+		if r.metrics != nil {
+			r.metrics.ObserveDB(metrics.OpQuery, time.Since(start))
+		}
+	}()
+
+	var result []domain.Withdrawal
 
 	err := r.pg.PgPool(ctx, func(ctx context.Context, pool pgc.PgxPoolIface) error {
 		rows, err := pool.Query(ctx, sqlGetWithdrawals, userID)
@@ -152,8 +187,8 @@ func (r *LoyaltyRepo) GetWithdrawals(ctx context.Context, userID domain.UserID) 
 		defer rows.Close()
 
 		for rows.Next() {
-			var item dto.WithdrawalItem
-			if err := rows.Scan(&item.Order, &item.Sum, &item.ProcessedAt); err != nil {
+			var item domain.Withdrawal
+			if err := rows.Scan(&item.OrderNumber, &item.Amount, &item.ProcessedAt); err != nil {
 				return err
 			}
 			result = append(result, item)

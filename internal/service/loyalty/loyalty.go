@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"gmart/internal/domain"
-	"gmart/internal/dto"
 	"gmart/internal/model/luhn"
 )
 
@@ -18,7 +17,7 @@ var (
 type LoyaltyRepoIface interface {
 	GetBalance(ctx context.Context, userID domain.UserID) (current, withdrawn domain.Amount, err error)
 	Withdraw(ctx context.Context, userID domain.UserID, order domain.OrderNumber, amount domain.Amount) error
-	GetWithdrawals(ctx context.Context, userID domain.UserID) ([]dto.WithdrawalItem, error)
+	GetWithdrawals(ctx context.Context, userID domain.UserID) ([]domain.Withdrawal, error)
 }
 
 // ============ Class ============
@@ -54,6 +53,6 @@ func (s *Loyalty) Withdraw(ctx context.Context, userID domain.UserID, order doma
 }
 
 // GetWithdrawals возвращает историю списаний
-func (s *Loyalty) GetWithdrawals(ctx context.Context, userID domain.UserID) ([]dto.WithdrawalItem, error) {
+func (s *Loyalty) GetWithdrawals(ctx context.Context, userID domain.UserID) ([]domain.Withdrawal, error) {
 	return s.repo.GetWithdrawals(ctx, userID)
 }
