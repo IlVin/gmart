@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS balances (
     user_id     BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     accrual     BIGINT NOT NULL DEFAULT 0,  -- Сумма всех начислений
     withdrawn   BIGINT NOT NULL DEFAULT 0,  -- Сумма всех списаний
-    updated_at  TIMESTAMPTZ DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ DEFAULT NOW()
     
     -- Главная бизнес-проверка: баланс не может быть отрицательным
     -- CONSTRAINT check_balance_not_negative CHECK (accrual - withdrawn >= 0)
