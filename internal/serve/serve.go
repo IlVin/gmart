@@ -154,15 +154,11 @@ func InitHuma(mux *http.ServeMux) huma.API {
 	grp := huma.NewGroup(api)
 
 	grp.UseTransformer(func(ctx huma.Context, status string, v any) (any, error) {
-		// Проверяем статус-код (Huma передает его как строку "422 Unprocessable Entity")
-		// Или можно проверить через ctx.Status()
-		if ctx.Status() == http.StatusUnprocessableEntity {
-			slog.Warn("Huma Validation Error (422)",
-				slog.Any("ctx", ctx),
-				slog.String("method", ctx.Method()),
-				slog.Any("details", v), // v содержит структуру huma.Error или []huma.ErrorDetail
-			)
-		}
+		slog.Warn("Huma Validation Error (422)",
+			slog.String("method", ctx.Method()),
+			slog.Any("path", ctx.URL()),
+			slog.Any("details", v), // v содержит структуру huma.Error или []huma.ErrorDetail
+		)
 
 		// Возвращаем объект без изменений, чтобы Huma отправила его клиенту
 		return v, nil
