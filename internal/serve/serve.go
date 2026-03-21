@@ -8,6 +8,7 @@ import (
 	"gmart/internal/adapters/pgc"
 	"gmart/internal/dto"
 	"gmart/internal/model/auth"
+	"gmart/internal/model/humawrapper"
 	"gmart/internal/service/loyalty"
 	"gmart/internal/service/orders"
 	"gmart/internal/service/user"
@@ -87,9 +88,10 @@ func Serve(ctx context.Context, arg *Input) error {
 	worker.Run(ctx, 3)
 
 	// Настройка HTTP сервера
+	handlerWithLogging := humawrapper.HumaErrorLogger(mux)
 	srv := &http.Server{
 		Addr:              arg.Options.RunAddress,
-		Handler:           mux,
+		Handler:           handlerWithLogging,
 		ReadHeaderTimeout: 5 * time.Second, // Защита от Slowloris атак
 		IdleTimeout:       30 * time.Second,
 	}
@@ -156,7 +158,7 @@ func InitHuma(mux *http.ServeMux) huma.API {
 	grp.UseTransformer(func(ctx huma.Context, status string, v any) (any, error) {
 		slog.Warn("Huma Validation Error (422)",
 			slog.String("method", ctx.Method()),
-			slog.Any("path", ctx.URL()),
+			slog.String("path", ctx.URL().Path),
 			slog.Any("details", v), // v содержит структуру huma.Error или []huma.ErrorDetail
 		)
 
