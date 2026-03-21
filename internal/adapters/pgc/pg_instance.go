@@ -225,13 +225,14 @@ func (h *pgInstance) Close() error {
 
 // HandleError реагирует на ошибки
 func (h *pgInstance) HandleError(err error) error {
-	if err == nil || errors.Is(err, pgx.ErrNoRows) {
+	if err == nil {
 		h.failures.Reset()
 		h.Online()
 		return nil
 	}
 
-	if h.failures.Inc(err) {
+	// Переводим в Offline только по сетевым ошибкам
+	if backoff.IsNetworkError(err) && h.failures.Inc(err) {
 		h.Offline()
 	}
 

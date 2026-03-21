@@ -3,7 +3,7 @@ package metrics
 import (
 	"time"
 
-	"gmart/internal/domain" // Добавляем импорт для domain.OrderStatus
+	"gmart/internal/domain"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -13,9 +13,10 @@ type PrometheusOrdersMetrics struct {
 	uploadCounts    *prometheus.CounterVec
 	acquireAttempts *prometheus.CounterVec
 	listSize        prometheus.Histogram
-	finalizedCounts *prometheus.CounterVec // Новая метрика для воркеров
+	finalizedCounts *prometheus.CounterVec
 }
 
+// Для OrdersRepo & WorkersRepo
 func NewForOrders(reg prometheus.Registerer) *PrometheusOrdersMetrics {
 	dbBuckets := []float64{.001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5}
 	sizeBuckets := []float64{0, 1, 5, 10, 20, 50, 100}

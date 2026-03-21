@@ -69,13 +69,8 @@ func (l *Loyalty) withdrawHandler() func(ctx context.Context, in *withdrawInput)
 			return nil, huma.Error401Unauthorized("пользователь не авторизован")
 		}
 		err := l.Withdraw(ctx, userID, in.Body.Order, in.Body.Sum)
-		slog.Info("withdrawHandler", slog.Any("err", err))
 		if err != nil {
 			if errors.Is(err, ErrInvalidOrderNumber) {
-				slog.Error("ErrInvalidOrderNumber",
-					slog.Any("input", in),
-					slog.Any("err", err),
-				)
 				return nil, huma.Error422UnprocessableEntity("неверный формат номера заказа")
 			}
 

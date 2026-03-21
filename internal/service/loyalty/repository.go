@@ -16,8 +16,8 @@ import (
 
 // SQL запросы
 const sqlGetBalance = `
-	SELECT (accrual - withdrawn) AS current, withdrawn 
-	FROM balances 
+	SELECT (accrual - withdrawn) AS current, withdrawn
+	FROM balances
 	WHERE user_id = $1
 `
 
@@ -32,7 +32,7 @@ const sqlGetWithdrawals = `
 // Списание баллов.
 const sqlWithdraw = `
 -- $1: user_id, $2: amount, $3: order_number, $4: now
-	WITH 
+	WITH
 	-- 1. Проверяем наличие пользователя и достаточность средств
 	check_funds AS (
 		SELECT $1::bigint as user_id
@@ -42,7 +42,7 @@ const sqlWithdraw = `
 	-- 2. Пробуем вставить списание. Вставляем только если check_funds вернул строку.
 	new_withdrawal AS (
 		INSERT INTO withdrawals (user_id, order_number, amount, processed_at)
-		SELECT user_id, $3, $2, $4::timestamptz 
+		SELECT user_id, $3, $2, $4::timestamptz
 		FROM check_funds
 		ON CONFLICT (order_number) DO NOTHING
 		RETURNING order_number

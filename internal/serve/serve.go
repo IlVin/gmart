@@ -158,18 +158,5 @@ func InitHuma(mux *http.ServeMux) huma.API {
 
 	api := humago.New(mux, humaConfig)
 
-	grp := huma.NewGroup(api)
-
-	grp.UseTransformer(func(ctx huma.Context, status string, v any) (any, error) {
-		slog.Warn("Huma Validation Error (422)",
-			slog.String("method", ctx.Method()),
-			slog.String("path", ctx.URL().Path),
-			slog.Any("details", v), // v содержит структуру huma.Error или []huma.ErrorDetail
-		)
-
-		// Возвращаем объект без изменений, чтобы Huma отправила его клиенту
-		return v, nil
-	})
-
-	return grp
+	return api
 }
