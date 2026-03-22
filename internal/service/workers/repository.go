@@ -127,14 +127,16 @@ func (r *WorkersRepo) UpdateOrderStatus(
 			return err
 		}
 		if tag.RowsAffected() == 0 {
-			slog.Info("order already processed or not found", "order", orderNumber)
+			slog.Info("order already processed or not found",
+				slog.String("order", orderNumber.String()),
+			)
 		}
 		return nil
 	})
 
 	if err != nil {
 		slog.Error("db query failed",
-			slog.String("op", "OrdersRepo.UpdateOrderStatus"),
+			slog.String("op", "WorkersRepo.UpdateOrderStatus"),
 			slog.Any("err", err),
 			slog.Any("orderNumber", orderNumber),
 			slog.Any("orderStatus", orderStatus),

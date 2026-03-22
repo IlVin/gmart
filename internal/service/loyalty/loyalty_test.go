@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"gmart/internal/domain"
-	"gmart/internal/dto"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -90,10 +89,10 @@ func TestLoyalty_GetWithdrawals(t *testing.T) {
 	userID := domain.UserID(1)
 
 	t.Run("Success", func(t *testing.T) {
-		expected := []dto.WithdrawalItem{
+		expected := []domain.Withdrawal{
 			{
-				Order:       "2377225624",
-				Sum:         50000,
+				OrderNumber: "2377225624",
+				Amount:      50000,
 				ProcessedAt: time.Now(),
 			},
 		}
@@ -107,6 +106,6 @@ func TestLoyalty_GetWithdrawals(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Len(t, res, 1)
-		assert.Equal(t, domain.OrderNumber("2377225624"), res[0].Order)
+		assert.Equal(t, domain.OrderNumber("2377225624"), res[0].OrderNumber)
 	})
 }
