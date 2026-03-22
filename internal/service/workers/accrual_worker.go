@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"gmart/internal/domain"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -42,6 +43,7 @@ type AccrualResponse struct {
 
 // Если в БД не осталось работы, то воркер идет спать на это время
 const sleepDuration time.Duration = 1000 * time.Millisecond
+const dbLimiter = 2
 
 type AccrualWrk struct {
 	wg                sync.WaitGroup
@@ -52,6 +54,7 @@ type AccrualWrk struct {
 	httpClient        *http.Client
 	accrualServiceURL *url.URL
 	isShutdown        atomic.Bool
+	dbLimiter         chan struct{}
 }
 
 func NewAccrualWrk(repo WorkerRepoIFace, m WorkerMetricsIFace, accrualServiceURL *url.URL) *AccrualWrk {
@@ -64,6 +67,7 @@ func NewAccrualWrk(repo WorkerRepoIFace, m WorkerMetricsIFace, accrualServiceURL
 			Timeout:   10 * time.Second,
 			Transport: &http.Transport{MaxIdleConnsPerHost: 100},
 		},
+		dbLimiter: make(chan struct{}, dbLimiter),
 	}
 }
 
@@ -83,6 +87,13 @@ func (a *AccrualWrk) wrkSleep(ctx context.Context) {
 // WakeUp будит один воркер, чтобы тот пошел в БД и взял джобу
 func (a *AccrualWrk) WakeUp() {
 	a.cond.Signal()
+}
+
+func (a *AccrualWrk) incSleepUntilMs(delta int64) {
+	newSleepUntilMs, curSleepUntilMs := a.nowMs()+delta, a.sleepUntilMs.Load()
+	for newSleepUntilMs > curSleepUntilMs && !a.sleepUntilMs.CompareAndSwap(curSleepUntilMs, newSleepUntilMs) {
+		curSleepUntilMs = a.sleepUntilMs.Load()
+	}
 }
 
 // Run запускает воркеры в работу
@@ -121,9 +132,7 @@ func (a *AccrualWrk) Run(ctx context.Context, wrkCount int) {
 
 				// Если произошла ошибка, то тоже надо поспать
 				if err != nil {
-					if a.sleepUntilMs.Load() <= a.nowMs() {
-						a.sleepUntilMs.Store(a.nowMs() + sleepDuration.Milliseconds())
-					}
+					a.incSleepUntilMs(sleepDuration.Milliseconds())
 					if !errors.Is(err, ErrQueueIsEmpty) {
 						slog.Warn("do work fail", slog.Any("err", err))
 					}
@@ -143,12 +152,20 @@ func (a *AccrualWrk) Shutdown() {
 	a.isShutdown.Store(true)
 	a.cond.Broadcast()
 	a.wg.Wait()
+	close(a.dbLimiter)
 }
 
 // doWork фоновый воркер
 func (a *AccrualWrk) doWork(ctx context.Context) error {
 
+	// В БД в каждый момент времи ходит не больше dbLimiter воркеров из одного инстанса сервиса
+	select {
+	case a.dbLimiter <- struct{}{}:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 	orderNumber, _, err := a.repo.AcquireNextOrder(ctx)
+	<-a.dbLimiter
 	if err != nil {
 		return err
 	}
@@ -167,12 +184,16 @@ func (a *AccrualWrk) doWork(ctx context.Context) error {
 	start := time.Now()
 	resp, err := a.httpClient.Do(req)
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return err
+		}
 		if a.metrics != nil {
 			a.metrics.IncProcessed("error")
 		}
 		return fmt.Errorf("accrual service unreachable (%s): %w", orderNumber, err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close()              // Здесь у нас ГАРАНТИРОВАННО не-nil resp
+	defer io.Copy(io.Discard, resp.Body) // Вычитываем тело до конца, чтобы использовать Keep-Alive (Если запаникует, то бади все равно закроется)
 
 	if a.metrics != nil {
 		a.metrics.ObserveRequest(strconv.Itoa(resp.StatusCode), time.Since(start))
@@ -216,18 +237,15 @@ func (a *AccrualWrk) doWork(ctx context.Context) error {
 		if retryAfter <= 0 {
 			retryAfter = 60
 		}
-		a.sleepUntilMs.Store(
-			a.nowMs() +
-				(time.Duration(retryAfter) * time.Second).Milliseconds())
+		a.incSleepUntilMs((time.Duration(retryAfter) * time.Second).Milliseconds())
 		return fmt.Errorf("rate limited: retry after %d s (%s)", retryAfter, orderNumber)
 
 	case http.StatusInternalServerError:
 		if a.metrics != nil {
 			a.metrics.IncProcessed("error_500")
 		}
-		a.sleepUntilMs.Store(
-			a.nowMs() +
-				(time.Duration(15) * time.Second).Milliseconds())
+		a.incSleepUntilMs((time.Duration(15) * time.Second).Milliseconds())
+
 		return errors.New("internal server error")
 
 	default:
