@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"gmart/internal/domain"
+	"gmart/internal/dto"
 	"io"
 	"log/slog"
 	"net/http"
@@ -35,12 +36,6 @@ type WorkerMetricsIFace interface {
 
 	// Специфичный счетчик для 429 ошибки, чтобы видеть плотность лимитов на графике
 	IncRateLimit()
-}
-
-type AccrualResponse struct {
-	Order   domain.OrderNumber `json:"order"`
-	Status  domain.OrderStatus `json:"status"`
-	Accrual domain.Amount      `json:"accrual,omitempty"`
 }
 
 // Если в БД не осталось работы, то воркер идет спать на это время
@@ -204,7 +199,7 @@ func (a *AccrualWrk) doWork(ctx context.Context) error {
 	switch resp.StatusCode {
 
 	case http.StatusOK:
-		var res AccrualResponse
+		var res dto.AccrualResponse
 		if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
 			if a.metrics != nil {
 				a.metrics.IncProcessed("error")

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"gmart/internal/domain"
+	"gmart/internal/dto"
 
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
@@ -30,7 +31,7 @@ func TestAccrualWrk_DoWork(t *testing.T) {
 			assert.Contains(t, r.URL.Path, orderNum.String())
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(AccrualResponse{
+			json.NewEncoder(w).Encode(dto.AccrualResponse{
 				Order:   orderNum,
 				Status:  "PROCESSED",
 				Accrual: 500,
