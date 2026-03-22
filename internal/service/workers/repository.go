@@ -21,7 +21,7 @@ const sqlAcquireNextOrder = `
 		SELECT order_number
 		FROM orders
 		WHERE status IN ('NEW', 'PROCESSING', 'REGISTERED')
-		  AND (accrualed_at IS NULL OR accrualed_at < $1::timestamptz - INTERVAL '30 seconds')
+		  AND (accrualed_at IS NULL OR accrualed_at < $1::timestamptz - INTERVAL '120 seconds')
 		ORDER BY uploaded_at ASC
 		FOR UPDATE SKIP LOCKED
 		LIMIT 1
@@ -52,7 +52,9 @@ var (
 	ErrQueueIsEmpty = errors.New("queue is empty")
 )
 
-//go:generate $GOPATH/bin/mockgen -source=$GOFILE -destination=repository_mock.go  -package=workers
+//go:generate $GOPATH/bin/mockgen -package=workers -destination=repository_mock.go  -source=$GOFILE
+//go:generate $GOPATH/bin/mockgen -package=workers -destination=pg_instance_mock.go -source=../../adapters/pgc/pg_instance.go
+//go:generate $GOPATH/bin/mockgen -package=workers  -destination=pgx_mock.go        github.com/jackc/pgx/v5 Tx,Row,BatchResults
 
 type WorkersMetricsRepoIFace interface {
 	ObserveDB(op metrics.OpType, duration time.Duration)
@@ -130,6 +132,13 @@ func (r *WorkersRepo) UpdateOrderStatus(
 			slog.Info("order already processed or not found",
 				slog.String("order", orderNumber.String()),
 			)
+			return nil
+		}
+		// Фиксируем переход в финальный статус
+		if orderStatus == "PROCESSED" || orderStatus == "INVALID" {
+			if r.metrics != nil {
+				r.metrics.IncOrderFinalized(orderStatus)
+			}
 		}
 		return nil
 	})
@@ -137,18 +146,11 @@ func (r *WorkersRepo) UpdateOrderStatus(
 	if err != nil {
 		slog.Error("db query failed",
 			slog.String("op", "WorkersRepo.UpdateOrderStatus"),
-			slog.Any("err", err),
-			slog.Any("orderNumber", orderNumber),
-			slog.Any("orderStatus", orderStatus),
+			slog.Any("err", err.Error()),
+			slog.String("order", orderNumber.String()),
+			slog.String("status", string(orderStatus)),
 		)
 		return fmt.Errorf("update order status fail: %w", err)
-	}
-
-	// Фиксируем переход в финальный статус
-	if orderStatus == "PROCESSED" || orderStatus == "INVALID" {
-		if r.metrics != nil {
-			r.metrics.IncOrderFinalized(orderStatus)
-		}
 	}
 
 	return nil

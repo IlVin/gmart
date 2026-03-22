@@ -16,6 +16,8 @@ import (
 	"time"
 )
 
+//go:generate $GOPATH/bin/mockgen -package=workers -destination=worker_mock_test.go -source=$GOFILE
+
 type WorkerRepoIFace interface {
 	// Взять из БД номер ордера, подлежащего обработке
 	AcquireNextOrder(ctx context.Context) (domain.OrderNumber, domain.OrderStatus, error)
