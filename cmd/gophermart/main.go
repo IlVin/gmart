@@ -37,6 +37,10 @@ func FixEnv() {
 		if val, ok := os.LookupEnv(fieldName.String()); ok {
 			target := "SERVICE_" + fieldName.String()
 			if _, exists := os.LookupEnv(target); !exists {
+				slog.Info("set env",
+					slog.String("src", t.Field(i).Name),
+					slog.String("dst", target),
+				)
 				os.Setenv(target, val)
 			}
 		}

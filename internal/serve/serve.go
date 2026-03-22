@@ -57,7 +57,7 @@ func Serve(ctx context.Context, arg *Input) error {
 	}
 
 	// Токен генератор/валидатор
-	tokenGenerator, err := auth.NewTokenGenerator(jwt.SigningMethodHS256, []byte(arg.Options.JwtSecretKey), arg.Options.JwtTtl)
+	tokenGenerator, err := auth.NewTokenGenerator(jwt.SigningMethodHS256, []byte(arg.Options.JwtSecretKey), arg.Options.JwtTTL)
 	if err != nil {
 		return fmt.Errorf("token generator create fail: %w", err)
 	}
@@ -73,7 +73,7 @@ func Serve(ctx context.Context, arg *Input) error {
 	mWorkers := metrics.NewForWorkers(arg.MetricsReg)
 
 	// Repo
-	authRepo := user.NewAuthRepo(arg.Pg, arg.Options.SessionTtl, mAuth)
+	authRepo := user.NewAuthRepo(arg.Pg, arg.Options.SessionTTL, mAuth)
 	ordersRepo := orders.NewOrdersRepo(arg.Pg, mOrders)
 	loyaltyRepo := loyalty.NewLoyaltyRepo(arg.Pg, mLoyalty)
 	workersRepo := workers.NewWorkersRepo(arg.Pg, mOrders)
