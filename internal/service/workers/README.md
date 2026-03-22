@@ -10,17 +10,23 @@
 - **Цепочка пробуждений (WakeUp)**: Если «разведчик» нашел работу и успешно выполнил ```doWork```, он сигнализирует следующему свободному воркеру. Это позволяет пулу мгновенно наращивать мощность до максимума, когда в очереди появляется много задач.
 - **API Trigger**: При загрузке пользователем нового заказа через API, система также подает сигнал воркерам начать обработку немедленно.
 
-### 2. Атомарность и Идемпотентность (Database-First)
+### 2. Защита базы данных (Database Semaphore)
+Для предотвращения "шторма" запросов к PostgreSQL при большом количестве запущенных воркеров используется внутренний лимитер (```dbLimiter```).
+- Реализован на базе **buffered channel** (семафор).
+- Ограничивает количество **одновременных активных сеансов** с БД от одного инстанса сервиса.
+- Даже если в пуле 100 воркеров, в базу одновременно пойдут только N (согласно конфигу), остальные подождут освобождения слота в неблокирующем ```select```.
+
+### 3. Атомарность и Идемпотентность (Database-First)
 Логика начисления баллов вынесена на уровень базы данных через сложный **CTE (Common Table Expression)** запрос.
 - Статус заказа и баланс пользователя обновляются **в одной транзакции**.
 - Идемпотентность гарантируется условием ```WHERE accrual = 0```. Если баллы уже были начислены другим инстансом, база не обновит строку, исключая риск двойного начисления.
 
-### 3. Распределенная блокировка через ```SKIP LOCKED```
+### 4. Распределенная блокировка через ```SKIP LOCKED```
 Для выбора задач используется конструкция ```FOR UPDATE SKIP LOCKED```. 
 - Это позволяет нескольким воркерам (даже на разных физических серверах) работать с одной таблицей без конфликтов.
 - Каждый воркер "бронирует" себе заказ, обновляя ```accrualed_at```, что делает его невидимым для других на время обработки.
 
-### 4. Умная обработка лимитов (CAS-loop)
+### 5. Умная обработка лимитов (CAS-loop)
 При получении ошибок ```429 Too Many Requests``` или ```500 Internal Error```, воркеры уходят в "сон". 
 - Время сна управляется атомарно через **CAS (Compare-And-Swap) цикл**. 
 - Это гарантирует, что время ожидания в инстансе будет только расти до максимального полученного значения, и «быстрые» ошибки не собьют серьезные ограничения (Retry-After) от сервера.
@@ -30,39 +36,38 @@
 ## Схема работы
 
 ```mermaid
-graph TD
-    subgraph "Instance (Go Service)"
-        T[Ticker 1s] -->|WakeUp Signal| C{sync.Cond}
-        API[API Order Upload] -->|WakeUp Signal| C
-        
-        subgraph "Worker Pool"
-            W1[Worker 1]
-            W2[Worker 2]
-            WN[Worker N]
-        end
-        
-        C -->|Wait / Signal| W1
-        C -->|Wait / Signal| W2
-        C -->|Wait / Signal| WN
-
-        W1 -.->|WakeUp Signal| C
-        W2 -.->|WakeUp Signal| C
-        WN -.->|WakeUp Signal| C
-    end
-
-    subgraph "PostgreSQL"
-        DB[(Orders Table)]
-        BAL[(Balances Table)]
-    end
-
-    subgraph "External Service"
-        EXT[Accrual System]
-    end
-
-    W1 & W2 & WN <-->|1. AcquireNextOrder <br/> SKIP LOCKED| DB
-    W1 & W2 & WN <-->|2. GET /api/orders/| EXT
-    W1 & W2 & WN ---->|3. Update status & balance <br/> CTE / UPSERT| DB
-    DB -.->|Atomic Update| BAL
+graph LR
+subgraph "Instance (Go Service)"
+T[Ticker 1s] -->|WakeUp Signal| C{sync.Cond}
+API[API Order Upload] -->|WakeUp Signal| C
+subgraph "Worker Pool"
+W1[Worker 1]
+W2[Worker 2]
+WN[Worker N]
+end
+C -->|Wait / Signal| W1
+C -->|Wait / Signal| W2
+C -->|Wait / Signal| WN
+W1 -.->|WakeUp Signal| C
+W2 -.->|WakeUp Signal| C
+WN -.->|WakeUp Signal| C
+end
+subgraph "Internal Gate"
+SEM((dbLimiter Semaphore))
+end
+subgraph "PostgreSQL"
+DB[(Orders Table)]
+BAL[(Balances Table)]
+end
+subgraph "External Service"
+EXT[Accrual System]
+end
+%% Потоки к БД (вправо)
+W1 & W2 & WN -->|Wait for Slot| SEM
+SEM <-->|1. Acquire 3. Update| DB
+DB -.->|Atomic| BAL
+%% Потоки к внешнему сервису (вниз)
+W1 & W2 & WN <-->|2. GET /api/orders/| EXT
 ```
 
 ---
@@ -89,3 +94,4 @@ graph TD
 - **Concurrency**: ```sync.Cond```, ```sync.WaitGroup```, ```atomic (CAS)```.
 - **Network**: ```http.Client``` с настроенным ```MaxIdleConnsPerHost``` для поддержания Keep-Alive.
 - **Database**: PostgreSQL (CTE, UPSERT, SKIP LOCKED).
+
