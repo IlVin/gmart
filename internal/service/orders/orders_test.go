@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"gmart/internal/domain"
-	"gmart/internal/dto"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -62,12 +61,12 @@ func TestOrders_List(t *testing.T) {
 	userID := domain.UserID(1)
 
 	t.Run("Success", func(t *testing.T) {
-		expectedItems := []dto.OrderItem{
+		expectedItems := []domain.Order{
 			{
-				Number:     "123",
-				Status:     domain.OrderStatus("NEW"),
-				Accrual:    500,
-				UploadedAt: time.Now(),
+				OrderNumber: "123",
+				Status:      domain.OrderStatus("NEW"),
+				Amount:      500,
+				UploadedAt:  time.Now(),
 			},
 		}
 
@@ -84,7 +83,7 @@ func TestOrders_List(t *testing.T) {
 	t.Run("Empty List", func(t *testing.T) {
 		mockRepo.EXPECT().
 			List(gomock.Any(), userID).
-			Return([]dto.OrderItem{}, nil)
+			Return([]domain.Order{}, nil)
 
 		res, err := svc.List(context.Background(), userID)
 		assert.ErrorIs(t, err, ErrOrderListIsEmpty)
