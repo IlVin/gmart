@@ -99,12 +99,16 @@ func run() error {
 				pg.Close()
 			}()
 
-			// Миграции прерывать нельзя
-			if err := pg.RunMigrations(context.Background()); err != nil {
-				slog.Error("failed to run migrations",
-					slog.Any("err", err),
-				)
-				return
+			// Миграции
+			if options.RunMigrations {
+				slog.Info("Migration flag detected, starting...")
+				// Миграции прерывать нельзя
+				if err := pg.RunMigrations(context.Background()); err != nil {
+					slog.Error("failed to run migrations",
+						slog.Any("err", err),
+					)
+					return
+				}
 			}
 
 			// Запуск HTTP сервера

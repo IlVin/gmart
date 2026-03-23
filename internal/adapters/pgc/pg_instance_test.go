@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"gmart/internal/adapters/metrics"
 	"gmart/internal/adapters/pgc/backoff"
 	"gmart/internal/adapters/pgc/fcounter"
+	"gmart/internal/domain"
 
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
@@ -61,7 +61,7 @@ func TestPgInstance_Tx_Success(t *testing.T) {
 
 	mockPool.EXPECT().Begin(ctx).Return(mockTx, nil)
 	mockTx.EXPECT().Commit(gomock.Any()).Return(nil)
-	mockMetrics.EXPECT().ObserveLatency("test_db", metrics.OpTx, gomock.Any())
+	mockMetrics.EXPECT().ObserveLatency("test_db", domain.OpTx, gomock.Any())
 	mockMetrics.EXPECT().SetStatus("test_db", true).AnyTimes() // Из-за HandleError(nil)
 
 	err := h.Tx(ctx, func(ctx context.Context, tx PgxTxIface) error {

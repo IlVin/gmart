@@ -58,3 +58,27 @@ services:
       - RUN_ADDRESS=:8080
       - DATABASE_URI=postgres://gmart:gmart_pswd@gmart_db:5432/gmart
       - ACCRUAL_SYSTEM_ADDRESS=http://accrual_service:8080
+
+
+  # --- MONITORING ---
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    networks:
+      - anet
+    ports:
+      - "9090:9090" # Хост 9090 -> Контейнер 9090
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    networks:
+      - anet
+    ports:
+      - "3000:3000" # Хост 3000 -> Контейнер 3000
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin # Дефолтный пароль
+    depends_on:
+      - prometheus
