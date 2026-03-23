@@ -1,0 +1,7 @@
+global:
+  scrape_interval: 5s # Частота опроса для быстрой отладки
+
+scrape_configs:
+  - job_name: 'gmart'
+    static_configs:
+      - targets: ['gmart_service:8080'] # Имя сервиса и внутренний порт из compose
