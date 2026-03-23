@@ -27,6 +27,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+//go:generate $GOPATH/bin/mockgen -source=$GOFILE                              -destination=serve_mock_test.go       -package=serve
+//go:generate $GOPATH/bin/mockgen -source=../adapters/pgc/pg_instance.go    -destination=pg_instance_mock_test.go -package=serve
+//go:generate $GOPATH/bin/mockgen                                              -destination=pgx_mock_test.go         -package=serve github.com/jackc/pgx/v5 Tx,Row,BatchResults,Rows
+
 // Input входные параметры для Serve
 type Input struct {
 	Options    *dto.CLIOptions
@@ -34,46 +38,30 @@ type Input struct {
 	MetricsReg *prometheus.Registry
 }
 
-// Запуск сервера. Передаем конфиг и роутер
-func Serve(ctx context.Context, arg *Input) error {
-	slog.Info("Starting server",
-		slog.String(
-			"ListenAddr",
-			arg.Options.RunAddress,
-		),
-		slog.String(
-			"AccrualSystemAddr",
-			arg.Options.AccrualSystemAddress,
-		),
-		slog.String(
-			"PgInstance",
-			arg.Options.DatabaseURI,
-		),
-	)
-
+// bootstrap инициализирует зависимости, роуты и возвращает http.Handler и воркера.
+func bootstrap(ctx context.Context, arg *Input) (http.Handler, *workers.AccrualWrk, error) {
 	mux := http.NewServeMux()
 
-	// Регистрируем эндпоинт для сбора метрик (Pull модель)
-	// Prometheus будет заходить сюда по адресу /metrics
-	arg.MetricsReg.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
-	arg.MetricsReg.MustRegister(collectors.NewGoCollector())
+	// Регистрируем стандартные метрики (используем Register вместо MustRegister для безопасности в тестах)
+	arg.MetricsReg.Register(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+	arg.MetricsReg.Register(collectors.NewGoCollector())
 	mux.Handle("/metrics", promhttp.HandlerFor(arg.MetricsReg, promhttp.HandlerOpts{}))
 
 	humaAPI := InitHuma(mux)
 
 	accrualURL, err := url.Parse(arg.Options.AccrualSystemAddress)
 	if err != nil {
-		return fmt.Errorf("cannot parse Accrual Sustem Address: %w", err)
+		return nil, nil, fmt.Errorf("cannot parse Accrual System Address: %w", err)
 	}
 
 	// Токен генератор/валидатор
 	tokenGenerator, err := auth.NewTokenGenerator(jwt.SigningMethodHS256, []byte(arg.Options.JwtSecretKey), arg.Options.JwtTTL)
 	if err != nil {
-		return fmt.Errorf("token generator create fail: %w", err)
+		return nil, nil, fmt.Errorf("token generator create fail: %w", err)
 	}
 	tokenVerifier, err := auth.NewTokenVerifier(jwt.SigningMethodHS256, []byte(arg.Options.JwtSecretKey))
 	if err != nil {
-		return fmt.Errorf("failed to create token verifier: %w", err)
+		return nil, nil, fmt.Errorf("failed to create token verifier: %w", err)
 	}
 
 	// Metrics
@@ -90,15 +78,31 @@ func Serve(ctx context.Context, arg *Input) error {
 	accrualClient := accrual.NewClient(accrualURL)
 
 	// Vertical Slices
-	user := user.NewUser(authRepo, tokenGenerator)
-	orders := orders.NewOrders(ordersRepo)
-	loyalty := loyalty.NewLoyalty(loyaltyRepo)
-	worker := workers.NewAccrualWrk(workersRepo, mWorkers, accrualClient)
+	userSvc := user.NewUser(authRepo, tokenGenerator)
+	ordersSvc := orders.NewOrders(ordersRepo)
+	loyaltySvc := loyalty.NewLoyalty(loyaltyRepo)
+	workerSvc := workers.NewAccrualWrk(workersRepo, mWorkers, accrualClient)
 
 	// Регистрация роутингов
-	user.RegistryRoutes(humaAPI)
-	orders.RegistryRoutes(humaAPI, tokenVerifier)
-	loyalty.RegistryRoutes(humaAPI, tokenVerifier)
+	userSvc.RegistryRoutes(humaAPI)
+	ordersSvc.RegistryRoutes(humaAPI, tokenVerifier)
+	loyaltySvc.RegistryRoutes(humaAPI, tokenVerifier)
+
+	return mux, workerSvc, nil
+}
+
+// Serve — точка входа для запуска сервера и управления его жизненным циклом.
+func Serve(ctx context.Context, arg *Input) error {
+	slog.Info("Starting server",
+		slog.String("ListenAddr", arg.Options.RunAddress),
+		slog.String("AccrualSystemAddr", arg.Options.AccrualSystemAddress),
+		slog.String("PgInstance", arg.Options.DatabaseURI),
+	)
+
+	handler, worker, err := bootstrap(ctx, arg)
+	if err != nil {
+		return err
+	}
 
 	// Запускаем воркеры, если их количество больше 0
 	if arg.Options.AccrualWorkers > 0 {
@@ -111,15 +115,13 @@ func Serve(ctx context.Context, arg *Input) error {
 	// Настройка HTTP сервера
 	srv := &http.Server{
 		Addr:              arg.Options.RunAddress,
-		Handler:           mux,
+		Handler:           handler,
 		ReadHeaderTimeout: arg.Options.HttpReadHeaderTimeout,
 		IdleTimeout:       arg.Options.HttpIdleTimeout,
 	}
 
-	// Канал для ошибок сервера
 	serverErrors := make(chan error, 1)
 
-	// Запускаем сервер в горутине
 	go func() {
 		slog.Info("Server is ready to handle requests")
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -128,7 +130,6 @@ func Serve(ctx context.Context, arg *Input) error {
 		}
 	}()
 
-	// Блокируемся и ждем либо ошибку, либо сигнал отмены контекста
 	select {
 	case err := <-serverErrors:
 		return err
@@ -136,7 +137,6 @@ func Serve(ctx context.Context, arg *Input) error {
 	case <-ctx.Done():
 		slog.Info("Shutting down server...")
 
-		// Даем серверу 5 секунд на завершение текущих запросов
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 

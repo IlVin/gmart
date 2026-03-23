@@ -13,6 +13,7 @@
 | `-d`, `--database-uri` | `DATABASE_URI` | `""` | Строка подключения к PostgreSQL. |
 | `-r`, `--accrual-system-address` | `ACCRUAL_SYSTEM_ADDRESS` | `""` | URL внешней системы начислений. |
 | `-m`, `--run-migrations` | `RUN_MIGRATIONS` | `false` | **Флаг активации миграций БД при старте.** |
+| (нет) | **`ACCRUAL_WORKERS`** | **`3`** | **Количество фоновых воркеров для опроса системы начислений.** |
 | `-k`, `--jwt-secret-key` | `JWT_SECRET_KEY` | `""` | Ключ для подписи JWT (HMAC). |
 | `-j`, `--jwt-ttl` | `JWT_TTL` | `15m` | Время жизни токена (например, `24h`). |
 | `-t`, `--session-ttl` | `SESSION_TTL` | `100000h` | Время жизни сессии в БД. |
@@ -27,7 +28,7 @@
 2. **ENV**: `RUN_MIGRATIONS=true ./gophermart`
 3. **.env файл**: Добавьте строку `RUN_MIGRATIONS=true`.
 
-```go
+'''go
 // Логика запуска в main.go
 if options.RunMigrations {
     slog.Info("Executing database migrations...")
@@ -36,20 +37,16 @@ if options.RunMigrations {
         return
     }
 }
-```
+'''
 
-## Жизненный цикл (Startup Flow)
+## Фоновые воркеры (Accrual Workers)
 
-1. **FixEnv**: Рефлексивный маппинг `dto.CLIOptions` в ENV-переменные для совместимости с `humacli`.
-2. **Graceful Shutdown**: Регистрация `NotifyContext` для перехвата `SIGINT/SIGTERM`.
-3. **Infrastructure**:
-    - Инициализация **Prometheus Registry** (включая Go & Process collectors).
-    - Создание инстанса **PostgreSQL** с Circuit Breaker логикой.
-4. **Conditional Migrations**: Проверка флага `--run-migrations` и запуск Goose-миграций.
-5. **Serve**: Передача управления в `internal/serve` для запуска HTTP-сервера и фоновых воркеров.
+Параметр `ACCRUAL_WORKERS` определяет параллелизм опроса внешней системы. 
+- Значение `0` полностью отключает фоновую обработку (полезно для тестов).
+- Высокие значения ускоряют обработку очереди, но могут привести к **429 Too Many Requests** от системы начислений.
 
 ## Аргументация дизайна
 
 - **Reflective Mapping**: Позволяет избежать дублирования имен переменных и жесткой привязки к префиксам фреймворка в бизнес-конфигурации.
-- **Atomic Migrations**: Использование `context.Background()` для миграций гарантирует, что они не будут прерваны сигналом остановки в процессе выполнения, что предотвращает повреждение стейта БД.
-- **Telemetry-First**: Метрики инициализируются до базы данных, что позволяет отслеживать ошибки подключения к PostgreSQL с первой секунды запуска.
+- **Atomic Migrations**: Использование `context.Background()` для миграций гарантирует, что они не будут прерваны сигналом остановки.
+- **Telemetry-First**: Метрики инициализируются до базы данных, что позволяет отслеживать ошибки подключения к PostgreSQL с первой секунды.
