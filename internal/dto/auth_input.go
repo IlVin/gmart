@@ -4,6 +4,7 @@ import (
 	"gmart/internal/domain"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/google/uuid"
 )
 
 // --- DTO ---
@@ -14,7 +15,7 @@ type AuthInput struct {
 
 // Реализуем Resolver, чтобы проверять токен и session_id прямо при парсинге входа
 func (i *AuthInput) Resolve(ctx huma.Context, prefix string) []error {
-	if i.Authorization == "" && i.SessionID.String() == "" {
+	if i.Authorization == "" && i.SessionID.UUID() == uuid.Nil {
 		return []error{huma.Error401Unauthorized("Missing Authorization header and session_id cookie")}
 	}
 
