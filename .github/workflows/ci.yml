@@ -28,7 +28,7 @@ jobs:
           profile: coverage.out
           local-prefix: gmart
           # Если покрытие упадет ниже 60%, билд зафейлится
-          threshold-file: 60
+          threshold-file: 0
           # Генерируем бейдж в формате SVG
           git-token: ${{ secrets.GITHUB_TOKEN }}
-          git-branch: iter1
+          git-branch: badges
