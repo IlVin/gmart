@@ -162,7 +162,9 @@ func (a *AccrualWrk) doWork(ctx context.Context) error {
 	}
 
 	// Сигналим спящим воркерам о том, что в БД есть джобы...
-	a.WakeUp()
+	if a.sleepUntilMs.Load() < a.nowMs() {
+		a.WakeUp()
+	}
 
 	start := time.Now()
 
