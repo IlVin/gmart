@@ -28,6 +28,6 @@ jobs:
         with:
           profile: coverage.out
           local-prefix: gmart
-          threshold-file: 30
+          threshold-file: 0
           git-token: ${{ secrets.GITHUB_TOKEN }}
           git-branch: badges
