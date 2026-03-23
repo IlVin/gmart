@@ -91,16 +91,18 @@ func Serve(ctx context.Context, arg *Input) error {
 	orders.RegistryRoutes(humaAPI, tokenVerifier)
 	loyalty.RegistryRoutes(humaAPI, tokenVerifier)
 
-	// 3. Запускаем воркеры в отдельной горутине
-	// Run внутри себя сделает wg.Add и в конце wg.Wait
-	worker.Run(ctx, 3)
+	// Запускаем воркеры в отдельной горутине, чтобы не блокировать старт сервера
+	go func() {
+		slog.Info("Starting background workers", slog.Int("count", 3))
+		worker.Run(ctx, 3)
+	}()
 
 	// Настройка HTTP сервера
 	srv := &http.Server{
 		Addr:              arg.Options.RunAddress,
 		Handler:           mux,
-		ReadHeaderTimeout: 5 * time.Second, // Защита от Slowloris атак
-		IdleTimeout:       30 * time.Second,
+		ReadHeaderTimeout: arg.Options.HttpReadHeaderTimeout,
+		IdleTimeout:       arg.Options.HttpIdleTimeout,
 	}
 
 	// Канал для ошибок сервера
