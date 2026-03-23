@@ -100,11 +100,13 @@ func Serve(ctx context.Context, arg *Input) error {
 	orders.RegistryRoutes(humaAPI, tokenVerifier)
 	loyalty.RegistryRoutes(humaAPI, tokenVerifier)
 
-	// Запускаем воркеры в отдельной горутине, чтобы не блокировать старт сервера
-	go func() {
-		slog.Info("Starting background workers", slog.Int("count", 3))
-		worker.Run(ctx, 3)
-	}()
+	// Запускаем воркеры, если их количество больше 0
+	if arg.Options.AccrualWorkers > 0 {
+		go func() {
+			slog.Info("Starting background workers", slog.Int("count", arg.Options.AccrualWorkers))
+			worker.Run(ctx, arg.Options.AccrualWorkers)
+		}()
+	}
 
 	// Настройка HTTP сервера
 	srv := &http.Server{

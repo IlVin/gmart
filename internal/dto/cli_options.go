@@ -9,6 +9,7 @@ type CLIOptions struct {
 	JwtSecretKey          string        `doc:"JWT secret key"                       short:"k" default:""`
 	JwtTTL                time.Duration `doc:"JWT TTL in duration (10h20m30s)"      short:"j" default:"15m"`
 	SessionTTL            time.Duration `doc:"Session TTL in duration (10h20m30s)"  short:"t" default:"100000h"`
+	AccrualWorkers        int           `doc:"Number of accrual background workers" env:"ACCRUAL_WORKERS"        envDefault:"3"`
 	RunMigrations         bool          `doc:"Run database migrations on startup"   short:"m" env:"RUN_MIGRATIONS" envDefault:"false"`
 	HttpReadHeaderTimeout time.Duration `doc:"Maximum duration for reading request headers (Slowloris protection)"            env:"HTTP_READ_HEADER_TIMEOUT" envDefault:"5s"`
 	HttpIdleTimeout       time.Duration `doc:"Maximum amount of time to wait for the next request when keep-alive is enabled" env:"HTTP_IDLE_TIMEOUT"        envDefault:"30s"`
