@@ -23,6 +23,7 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // Input входные параметры для Serve
@@ -50,6 +51,11 @@ func Serve(ctx context.Context, arg *Input) error {
 	)
 
 	mux := http.NewServeMux()
+
+	// Регистрируем эндпоинт для сбора метрик (Pull модель)
+	// Prometheus будет заходить сюда по адресу /metrics
+	mux.Handle("/metrics", promhttp.HandlerFor(arg.MetricsReg, promhttp.HandlerOpts{}))
+
 	humaAPI := InitHuma(mux)
 
 	accrualURL, err := url.Parse(arg.Options.AccrualSystemAddress)
