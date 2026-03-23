@@ -10,9 +10,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"gmart/internal/adapters/metrics"
 	"gmart/internal/adapters/pgc/backoff"
 	"gmart/internal/adapters/pgc/fcounter"
+	"gmart/internal/domain"
 	"gmart/migrations"
 
 	"golang.org/x/sys/cpu"
@@ -93,8 +93,8 @@ func (w *pgxPoolWrapper) AsPool() *pgxpool.Pool {
 type PgInstanceMetrics interface {
 	SetStatus(instance string, online bool)
 	IncOfflineEvent(instance string)
-	IncRetry(instance string, opType metrics.OpType)
-	ObserveLatency(instance string, opType metrics.OpType, duration float64)
+	IncRetry(instance string, opType domain.OpType)
+	ObserveLatency(instance string, opType domain.OpType, duration float64)
 }
 
 // PgInstance коннектор, предохраняющий БД от дополнительной нагрузки, когда БД "плохо"
@@ -270,7 +270,7 @@ func (h *pgInstance) Tx(ctx context.Context, cb func(ctx context.Context, tx Pgx
 
 	err := h.repeater.WithRetry(ctx, func() (err error) {
 		if h.metrics != nil && attempt > 0 {
-			h.metrics.IncRetry(h.String(), metrics.OpTx)
+			h.metrics.IncRetry(h.String(), domain.OpTx)
 		}
 		attempt++
 
@@ -319,7 +319,7 @@ func (h *pgInstance) Tx(ctx context.Context, cb func(ctx context.Context, tx Pgx
 	})
 
 	if h.metrics != nil {
-		h.metrics.ObserveLatency(h.String(), metrics.OpTx, time.Since(start).Seconds())
+		h.metrics.ObserveLatency(h.String(), domain.OpTx, time.Since(start).Seconds())
 	}
 	return err
 }
@@ -331,7 +331,7 @@ func (h *pgInstance) PgPool(ctx context.Context, cb func(ctx context.Context, po
 
 	err := h.repeater.WithRetry(ctx, func() (err error) {
 		if h.metrics != nil && attempt > 0 {
-			h.metrics.IncRetry(h.String(), metrics.OpPool)
+			h.metrics.IncRetry(h.String(), domain.OpPool)
 		}
 		attempt++
 		defer func() {
@@ -358,7 +358,7 @@ func (h *pgInstance) PgPool(ctx context.Context, cb func(ctx context.Context, po
 		return h.HandleError(err)
 	})
 	if h.metrics != nil {
-		h.metrics.ObserveLatency(h.String(), metrics.OpPool, time.Since(start).Seconds())
+		h.metrics.ObserveLatency(h.String(), domain.OpPool, time.Since(start).Seconds())
 	}
 	return err
 }

@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"time"
 
-	"gmart/internal/adapters/metrics"
 	"gmart/internal/adapters/pgc"
 	"gmart/internal/domain"
 
@@ -57,7 +56,7 @@ var (
 //go:generate $GOPATH/bin/mockgen -package=workers  -destination=pgx_mock.go        github.com/jackc/pgx/v5 Tx,Row,BatchResults
 
 type WorkersMetricsRepoIFace interface {
-	ObserveDB(op metrics.OpType, duration time.Duration)
+	ObserveDB(op domain.OpType, duration time.Duration)
 	IncAcquireAttempt(found bool)                // фиксируем, были ли задачи в очереди
 	ObserveListSize(size int)                    // метрика для мониторинга объема данных
 	IncOrderFinalized(status domain.OrderStatus) // метрика финализации
@@ -82,7 +81,7 @@ func (r *WorkersRepo) AcquireNextOrder(ctx context.Context) (domain.OrderNumber,
 	start := r.now()
 	defer func() {
 		if r.metrics != nil {
-			r.metrics.ObserveDB(metrics.OpQuery, time.Since(start))
+			r.metrics.ObserveDB(domain.OpQuery, time.Since(start))
 		}
 	}()
 
@@ -119,7 +118,7 @@ func (r *WorkersRepo) UpdateOrderStatus(
 	start := r.now()
 	defer func() {
 		if r.metrics != nil {
-			r.metrics.ObserveDB(metrics.OpExec, time.Since(start))
+			r.metrics.ObserveDB(domain.OpExec, time.Since(start))
 		}
 	}()
 

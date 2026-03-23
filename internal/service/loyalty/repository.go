@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"time"
 
-	"gmart/internal/adapters/metrics"
 	"gmart/internal/adapters/pgc"
 	"gmart/internal/domain"
 
@@ -72,7 +71,7 @@ var (
 )
 
 type LoyaltyMetrics interface {
-	ObserveDB(op metrics.OpType, duration time.Duration)
+	ObserveDB(op domain.OpType, duration time.Duration)
 	IncWithdrawal(status string) // success, insufficient_funds, conflict
 	ObserveWithdrawalAmount(amount domain.Amount)
 }
@@ -96,7 +95,7 @@ func (r *LoyaltyRepo) GetBalance(ctx context.Context, userID domain.UserID) (cur
 	start := r.now()
 	defer func() {
 		if r.metrics != nil {
-			r.metrics.ObserveDB(metrics.OpQuery, time.Since(start))
+			r.metrics.ObserveDB(domain.OpQuery, time.Since(start))
 		}
 	}()
 
@@ -122,7 +121,7 @@ func (r *LoyaltyRepo) Withdraw(ctx context.Context, userID domain.UserID, order 
 	start := r.now()
 	defer func() {
 		if r.metrics != nil {
-			r.metrics.ObserveDB(metrics.OpQuery, time.Since(start))
+			r.metrics.ObserveDB(domain.OpQuery, time.Since(start))
 		}
 	}()
 
@@ -173,7 +172,7 @@ func (r *LoyaltyRepo) GetWithdrawals(ctx context.Context, userID domain.UserID) 
 	start := r.now()
 	defer func() {
 		if r.metrics != nil {
-			r.metrics.ObserveDB(metrics.OpQuery, time.Since(start))
+			r.metrics.ObserveDB(domain.OpQuery, time.Since(start))
 		}
 	}()
 

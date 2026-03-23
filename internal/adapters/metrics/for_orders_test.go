@@ -33,7 +33,7 @@ func TestPrometheusOrdersMetrics_Methods(t *testing.T) {
 
 	t.Run("ObserveDB", func(t *testing.T) {
 		duration := 150 * time.Millisecond
-		m.ObserveDB(OpQuery, duration)
+		m.ObserveDB(domain.OpQuery, duration)
 
 		// Проверяем общее количество записей в гистограмме
 		count := testutil.CollectAndCount(m.dbDuration)
@@ -68,12 +68,12 @@ func TestPrometheusOrdersMetrics_Methods(t *testing.T) {
 			# HELP gmart_orders_list_size_rows Number of orders returned in a single list request
 			# TYPE gmart_orders_list_size_rows histogram
 			gmart_orders_list_size_rows_bucket{le="0"} 0
+			gmart_orders_list_size_rows_bucket{le="1"} 0
 			gmart_orders_list_size_rows_bucket{le="5"} 0
 			gmart_orders_list_size_rows_bucket{le="10"} 0
 			gmart_orders_list_size_rows_bucket{le="20"} 0
 			gmart_orders_list_size_rows_bucket{le="50"} 1
 			gmart_orders_list_size_rows_bucket{le="100"} 1
-			gmart_orders_list_size_rows_bucket{le="500"} 1
 			gmart_orders_list_size_rows_bucket{le="+Inf"} 1
 			gmart_orders_list_size_rows_sum 42
 			gmart_orders_list_size_rows_count 1

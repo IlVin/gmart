@@ -66,7 +66,7 @@ func NewForOrders(reg prometheus.Registerer) *PrometheusOrdersMetrics {
 }
 
 // ObserveDB записывает время выполнения запроса к БД (Удовлетворяет обоим интерфейсам)
-func (m *PrometheusOrdersMetrics) ObserveDB(op OpType, d time.Duration) {
+func (m *PrometheusOrdersMetrics) ObserveDB(op domain.OpType, d time.Duration) {
 	m.dbDuration.WithLabelValues(op.String()).Observe(d.Seconds())
 }
 

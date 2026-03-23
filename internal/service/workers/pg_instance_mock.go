@@ -11,8 +11,8 @@ package workers
 
 import (
 	context "context"
-	metrics "gmart/internal/adapters/metrics"
 	pgc "gmart/internal/adapters/pgc"
+	domain "gmart/internal/domain"
 	reflect "reflect"
 
 	pgx "github.com/jackc/pgx/v5"
@@ -614,7 +614,7 @@ func (mr *MockPgInstanceMetricsMockRecorder) IncOfflineEvent(instance any) *gomo
 }
 
 // IncRetry mocks base method.
-func (m *MockPgInstanceMetrics) IncRetry(instance string, opType metrics.OpType) {
+func (m *MockPgInstanceMetrics) IncRetry(instance string, opType domain.OpType) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "IncRetry", instance, opType)
 }
@@ -626,7 +626,7 @@ func (mr *MockPgInstanceMetricsMockRecorder) IncRetry(instance, opType any) *gom
 }
 
 // ObserveLatency mocks base method.
-func (m *MockPgInstanceMetrics) ObserveLatency(instance string, opType metrics.OpType, duration float64) {
+func (m *MockPgInstanceMetrics) ObserveLatency(instance string, opType domain.OpType, duration float64) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "ObserveLatency", instance, opType, duration)
 }

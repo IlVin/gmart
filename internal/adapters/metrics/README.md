@@ -1,64 +1,78 @@
-# Telemetry Metrics Module
+# Metrics Adapter (Prometheus)
 
-Модуль предназначен для сбора и экспорта технических показателей приложения `gmart` в формате Prometheus.
+Пакет `internal/adapters/metrics` отвечает за сбор, регистрацию и предоставление телеметрии всего сервиса GopherMart. Он разделен на логические подсистемы для удобства масштабирования и чистоты кода.
 
-## Структура пакета
+## Архитектура пакета
 
-- `metrics.go`: Общие типы и константы операций (`OpType`).
-- `forpginstance/`: Метрики работоспособности и производительности PostgreSQL.
-- `forauth/`: Метрики процессов авторизации и безопасности.
+```mermaid
+graph TD
+    Reg[Prometheus Registerer] --> Auth
+    Reg --> Loyalty
+    Reg --> Orders
+    Reg --> Workers
+    Reg --> PG
 
-## Операции (OpType)
+    subgraph Business ["Бизнес метрики"]
+        direction TB
+        Auth[Auth Metrics]
+        Loyalty[Loyalty Metrics]
+        Orders[Orders Metrics]
+        s1[ ]
+    end
 
-Используются для типизации меток (labels) в гистограммах и счетчиках:
-- `query` / `exec`: Запросы к БД.
-- `tx` / `pool`: Работа с транзакциями и пулом соединений.
-- `bcrypt`: Операции хеширования и проверки паролей.
+    subgraph Infra ["Инфраструктурные_метрики"]
+        direction TB
+        Workers[Workers Metrics]
+        PG[PostgreSQL Metrics]
+        s2[ ]
+    end
 
----
-
-## Реализованные метрики
-
-### 1. PostgreSQL (`forpginstance`)
-Мониторинг состояния и производительности каждого инстанса БД.
-
-
-| Метрика | Тип | Описание | Метки |
-| :--- | :--- | :--- | :--- |
-| `gmart_postgresql_pg_instance_ready` | Gauge | 1 если инстанс Online, 0 если Offline | `instance` |
-| `gmart_postgresql_pg_instance_offline_total` | Counter | Общее количество событий ухода в Offline | `instance` |
-| `gmart_postgresql_pg_instance_retries_total` | Counter | Общее количество повторных попыток | `instance`, `type` |
-| `gmart_postgresql_pg_instance_duration_seconds` | Histogram | Длительность операций (бакеты: 1мс - 5с) | `instance`, `type` |
-
-### 2. Auth (`forauth`)
-Аналитика безопасности и производительности криптографических функций.
-
-
-| Метрика | Тип | Описание | Метки |
-| :--- | :--- | :--- | :--- |
-| `gmart_auth_login_errors_total` | Counter | Ошибки входа по причинам (not_found, invalid_pwd) | `reason` |
-| `gmart_auth_bcrypt_duration_seconds` | Histogram | Время работы bcrypt (бакеты: 50мс - 2с) | `type` |
-
----
-
-## Использование
-
-### Инициализация
-```go
-reg := prometheus.NewRegistry()
-
-// Регистрация метрик (MustRegister внутри)
-pgMetrics := forpginstance.NewForPgInstance(reg)
-authMetrics := forauth.NewForAuth(reg)
+    %% Стилизация для отступов и цвета
+    style s1 fill:none,stroke:none
+    style s2 fill:none,stroke:none
+    style Business fill:#fff9b4,stroke:#fbc02d
+    style Infra fill:#f5fff5,stroke:#7b1fa2
 ```
 
-### Запись данных
-```go
-// Метрики БД
-pgMetrics.SetStatus("main_db:5432", true)
-pgMetrics.ObserveLatency("main_db:5432", metrics.OpQuery, 0.042)
+## Подсистемы и метрики
 
-// Метрики Auth
-authMetrics.IncLoginError("err_user_not_found")
-authMetrics.ObserveBcrypt(0.350) // Замер времени хеширования
+### 1. Auth (Авторизация)
+Отвечает за безопасность и производительность криптографии.
+- ```gmart_auth_login_errors_total```: Ошибки входа с разбивкой по причинам (invalid_password, user_not_found).
+- ```gmart_auth_bcrypt_duration_seconds```: Гистограмма времени хеширования (критично для CPU).
+
+### 2. Loyalty (Лояльность)
+Отслеживает финансовые потоки и баланс.
+- ```gmart_loyalty_withdrawals_total```: Количество попыток списания баллов.
+- ```gmart_loyalty_withdrawal_amount_cents```: Распределение сумм списаний в копейках.
+- ```gmart_loyalty_db_operation_duration_seconds```: Латентность БД в контексте программы лояльности.
+
+### 3. Orders (Заказы)
+Мониторинг жизненного цикла заказов.
+- ```gmart_orders_upload_total```: Статистика загрузки новых заказов.
+- ```gmart_orders_list_size_rows```: Размер возвращаемых списков заказов.
+- ```gmart_orders_finalized_total```: Счётчик заказов, перешедших в статусы PROCESSED или INVALID.
+
+### 4. Workers (Внешние интеграции)
+Контроль взаимодействия с системой Accrual.
+- ```gmart_worker_processed_items_total```: Результаты итераций воркера (success, timeout, rate_limit).
+- ```gmart_worker_accrual_request_duration_seconds```: Латентность внешнего API.
+- ```gmart_worker_rate_limit_hits_total```: Счётчик HTTP 429 ошибок.
+
+### 5. PostgreSQL (Инфраструктура)
+Детальный мониторинг состояния экземпляров БД.
+- ```gmart_postgresql_pg_instance_ready```: Статус доступности (1 - Online, 0 - Offline).
+- ```gmart_postgresql_pg_instance_duration_seconds```: Время выполнения низкоуровневых операций (Query, Exec, Tx).
+- ```gmart_postgresql_pg_instance_retries_total```: Количество повторных попыток при сбоях.
+
+## Особенности реализации
+
+- **Типизация операций**: Используется общий тип ```OpType``` (query, exec, bcrypt и др.) для унификации меток во всех метриках.
+- **Fail-Fast регистрация**: Применение ```reg.MustRegister(...)``` гарантирует, что приложение не запустится с некорректной конфигурацией метрик.
+- **Оптимизированные бакеты**: Для каждой подсистемы подобраны свои интервалы (Buckets) — от миллисекунд для БД до секунд для внешних HTTP-вызовов.
+
+## Генерация моков
+Для тестирования компонентов, зависящих от метрик, предусмотрена генерация мока для интерфейса Prometheus:
+```bash
+go generate ./internal/adapters/metrics/...
 ```

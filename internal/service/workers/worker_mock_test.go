@@ -12,11 +12,51 @@ package workers
 import (
 	context "context"
 	domain "gmart/internal/domain"
+	dto "gmart/internal/dto"
 	reflect "reflect"
 	time "time"
 
 	gomock "go.uber.org/mock/gomock"
 )
+
+// MockAccrualClientIFace is a mock of AccrualClientIFace interface.
+type MockAccrualClientIFace struct {
+	ctrl     *gomock.Controller
+	recorder *MockAccrualClientIFaceMockRecorder
+	isgomock struct{}
+}
+
+// MockAccrualClientIFaceMockRecorder is the mock recorder for MockAccrualClientIFace.
+type MockAccrualClientIFaceMockRecorder struct {
+	mock *MockAccrualClientIFace
+}
+
+// NewMockAccrualClientIFace creates a new mock instance.
+func NewMockAccrualClientIFace(ctrl *gomock.Controller) *MockAccrualClientIFace {
+	mock := &MockAccrualClientIFace{ctrl: ctrl}
+	mock.recorder = &MockAccrualClientIFaceMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockAccrualClientIFace) EXPECT() *MockAccrualClientIFaceMockRecorder {
+	return m.recorder
+}
+
+// Fetch mocks base method.
+func (m *MockAccrualClientIFace) Fetch(ctx context.Context, order domain.OrderNumber) (*dto.AccrualResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Fetch", ctx, order)
+	ret0, _ := ret[0].(*dto.AccrualResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Fetch indicates an expected call of Fetch.
+func (mr *MockAccrualClientIFaceMockRecorder) Fetch(ctx, order any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Fetch", reflect.TypeOf((*MockAccrualClientIFace)(nil).Fetch), ctx, order)
+}
 
 // MockWorkerRepoIFace is a mock of WorkerRepoIFace interface.
 type MockWorkerRepoIFace struct {

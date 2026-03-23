@@ -1,6 +1,8 @@
 package metrics
 
 import (
+	"gmart/internal/domain"
+
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -64,10 +66,10 @@ func (m *PrometheusPgInstanceMetrics) IncOfflineEvent(inst string) {
 	m.offline.WithLabelValues(inst).Inc()
 }
 
-func (m *PrometheusPgInstanceMetrics) IncRetry(inst string, opType OpType) {
+func (m *PrometheusPgInstanceMetrics) IncRetry(inst string, opType domain.OpType) {
 	m.retries.WithLabelValues(inst, opType.String()).Inc()
 }
 
-func (m *PrometheusPgInstanceMetrics) ObserveLatency(inst string, opType OpType, d float64) {
+func (m *PrometheusPgInstanceMetrics) ObserveLatency(inst string, opType domain.OpType, d float64) {
 	m.latency.WithLabelValues(inst, opType.String()).Observe(d)
 }

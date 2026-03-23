@@ -10,7 +10,6 @@
 package workers
 
 import (
-	metrics "gmart/internal/adapters/metrics"
 	domain "gmart/internal/domain"
 	reflect "reflect"
 	time "time"
@@ -67,7 +66,7 @@ func (mr *MockWorkersMetricsRepoIFaceMockRecorder) IncOrderFinalized(status any)
 }
 
 // ObserveDB mocks base method.
-func (m *MockWorkersMetricsRepoIFace) ObserveDB(op metrics.OpType, duration time.Duration) {
+func (m *MockWorkersMetricsRepoIFace) ObserveDB(op domain.OpType, duration time.Duration) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "ObserveDB", op, duration)
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"gmart/internal/adapters/accrual"
 	"gmart/internal/adapters/metrics"
 	"gmart/internal/adapters/pgc"
 	"gmart/internal/dto"
@@ -77,12 +78,13 @@ func Serve(ctx context.Context, arg *Input) error {
 	ordersRepo := orders.NewOrdersRepo(arg.Pg, mOrders)
 	loyaltyRepo := loyalty.NewLoyaltyRepo(arg.Pg, mLoyalty)
 	workersRepo := workers.NewWorkersRepo(arg.Pg, mOrders)
+	accrualClient := accrual.NewClient(accrualURL)
 
 	// Vertical Slices
 	user := user.NewUser(authRepo, tokenGenerator)
 	orders := orders.NewOrders(ordersRepo)
 	loyalty := loyalty.NewLoyalty(loyaltyRepo)
-	worker := workers.NewAccrualWrk(workersRepo, mWorkers, accrualURL)
+	worker := workers.NewAccrualWrk(workersRepo, mWorkers, accrualClient)
 
 	// Регистрация роутингов
 	user.RegistryRoutes(humaAPI)

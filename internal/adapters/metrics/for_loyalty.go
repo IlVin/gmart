@@ -48,7 +48,7 @@ func NewForLoyalty(reg prometheus.Registerer) *PrometheusLoyaltyMetrics {
 	return m
 }
 
-func (m *PrometheusLoyaltyMetrics) ObserveDB(op OpType, d time.Duration) {
+func (m *PrometheusLoyaltyMetrics) ObserveDB(op domain.OpType, d time.Duration) {
 	m.dbDuration.WithLabelValues(op.String()).Observe(d.Seconds())
 }
 

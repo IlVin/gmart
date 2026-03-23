@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"time"
 
-	"gmart/internal/adapters/metrics"
 	"gmart/internal/adapters/pgc"
 	"gmart/internal/domain"
 )
@@ -40,7 +39,7 @@ var (
 //go:generate $GOPATH/bin/mockgen -source=$GOFILE -destination=repository_mock.go  -package=orders
 
 type OrdersMetrics interface {
-	ObserveDB(op metrics.OpType, duration time.Duration)
+	ObserveDB(op domain.OpType, duration time.Duration)
 	IncOrderUpload(status string) // status: new, conflict, already_uploaded
 	ObserveListSize(size int)     // метрика для мониторинга объема данных
 }
@@ -64,7 +63,7 @@ func (r *OrdersRepo) Upload(ctx context.Context, userID domain.UserID, orderNumb
 	start := r.now()
 	defer func() {
 		if r.metrics != nil {
-			r.metrics.ObserveDB(metrics.OpExec, time.Since(start))
+			r.metrics.ObserveDB(domain.OpExec, time.Since(start))
 		}
 	}()
 
@@ -106,7 +105,7 @@ func (r *OrdersRepo) List(ctx context.Context, userID domain.UserID) ([]domain.O
 	start := r.now()
 	defer func() {
 		if r.metrics != nil {
-			r.metrics.ObserveDB(metrics.OpQuery, time.Since(start))
+			r.metrics.ObserveDB(domain.OpQuery, time.Since(start))
 		}
 	}()
 

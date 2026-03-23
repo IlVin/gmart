@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"gmart/internal/domain"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -49,12 +50,12 @@ func TestPrometheusPgInstanceMetrics_Methods(t *testing.T) {
 	})
 
 	t.Run("IncRetry", func(t *testing.T) {
-		m.IncRetry(inst, OpQuery)
+		m.IncRetry(inst, domain.OpQuery)
 		assert.Equal(t, 1.0, testutil.ToFloat64(m.retries.WithLabelValues(inst, "query")))
 	})
 
 	t.Run("ObserveLatency", func(t *testing.T) {
-		m.ObserveLatency(inst, OpExec, 0.5)
+		m.ObserveLatency(inst, domain.OpExec, 0.5)
 		// testutil.CollectAndCount проверяет наличие данных в гистограмме
 		count := testutil.CollectAndCount(m.latency)
 		assert.Equal(t, 1, count)
