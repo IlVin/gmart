@@ -31,4 +31,4 @@ jobs:
           threshold-file: 60
           # Генерируем бейдж в формате SVG
           git-token: ${{ secrets.GITHUB_TOKEN }}
-          git-branch: badges
+          git-branch: iter1
