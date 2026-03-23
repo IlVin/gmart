@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"gmart/internal/adapters/pgc"
+	pgc "gmart/internal/adapters/pgc"
 	"gmart/internal/domain"
 
 	"github.com/google/uuid"
@@ -21,7 +21,7 @@ func TestAuthRepo_SignIn_UserNotFound_Metrics(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mPg := pgc.NewMockPgInstance(ctrl)
+	mPg := NewMockPgInstance(ctrl)
 	mMetrics := NewMockAuthMetrics(ctrl)
 	repo := NewAuthRepo(mPg, time.Hour, mMetrics)
 
@@ -46,7 +46,7 @@ func TestAuthRepo_SignInSleep_TimingProtection(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mPg := pgc.NewMockPgInstance(ctrl)
+	mPg := NewMockPgInstance(ctrl)
 	// Метрики не важны для этого теста, передаем nil (проверка nil-safety)
 
 	repo := NewAuthRepo(mPg, time.Hour, nil)
@@ -85,10 +85,10 @@ func TestAuthRepo_SignUp_Success(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mPg := pgc.NewMockPgInstance(ctrl)
+	mPg := NewMockPgInstance(ctrl)
 	mMetrics := NewMockAuthMetrics(ctrl)
-	mTx := pgc.NewMockPgxTxIface(ctrl)
-	mockRow := pgc.NewMockRow(ctrl) // Создаем мок строки
+	mTx := NewMockPgxTxIface(ctrl)
+	mockRow := NewMockRow(ctrl) // Создаем мок строки
 
 	repo := NewAuthRepo(mPg, time.Hour, mMetrics)
 	ctx := context.Background()
@@ -144,7 +144,7 @@ func TestAuthRepo_SignInSleep_ContextCancel(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mPg := pgc.NewMockPgInstance(ctrl)
+	mPg := NewMockPgInstance(ctrl)
 	repo := NewAuthRepo(mPg, time.Hour, nil)
 	repo.avgBcrypt.Store((500 * time.Millisecond).Nanoseconds())
 

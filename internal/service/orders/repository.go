@@ -36,7 +36,7 @@ var (
 	ErrOrderAlreadyUploaded = errors.New("order number already uploaded")
 )
 
-//go:generate $GOPATH/bin/mockgen -source=$GOFILE -destination=repository_mock.go  -package=orders
+//go:generate $GOPATH/bin/mockgen -source=$GOFILE -destination=repository_mock_test.go  -package=orders
 
 type OrdersMetrics interface {
 	ObserveDB(op domain.OpType, duration time.Duration)

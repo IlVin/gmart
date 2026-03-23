@@ -11,7 +11,7 @@ var (
 	ErrInvalidOrderNumber = errors.New("invalid order number")
 )
 
-//go:generate $GOPATH/bin/mockgen -source=$GOFILE -destination=loyalty_mock.go  -package=loyalty
+//go:generate $GOPATH/bin/mockgen -source=$GOFILE -destination=loyalty_mock_test.go  -package=loyalty
 
 // LoyaltyRepoIface описывает методы репозитория для мокирования
 type LoyaltyRepoIface interface {

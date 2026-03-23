@@ -7,7 +7,7 @@ import (
 	"gmart/internal/domain"
 )
 
-//go:generate $GOPATH/bin/mockgen -source=$GOFILE -destination=orders_mock.go  -package=orders
+//go:generate $GOPATH/bin/mockgen -source=$GOFILE -destination=orders_mock_test.go  -package=orders
 
 // OrdersRepoIFace описывает методы для работы с заказами.
 // Используется для генерации моков и подмены реализации в тестах сервиса.

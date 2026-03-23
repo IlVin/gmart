@@ -28,4 +28,4 @@ git fetch template && git checkout template/master .github
 
 
 
-![Coverage](https://raw.githubusercontent.com)
+![coverage](https://raw.githubusercontent.com/IlVin/gmart/badges/.badges/1/merge/coverage.svg)

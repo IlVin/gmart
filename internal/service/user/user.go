@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 )
 
-//go:generate $GOPATH/bin/mockgen -source=$GOFILE -destination=user_mock.go  -package=user
+//go:generate $GOPATH/bin/mockgen -source=$GOFILE -destination=user_mock_test.go  -package=user
 
 // AuthRepoIFace описывает методы репозитория для работы с пользователями и сессиями.
 type AuthRepoIFace interface {

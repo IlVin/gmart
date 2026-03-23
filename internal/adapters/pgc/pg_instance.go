@@ -25,8 +25,8 @@ import (
 	goose "github.com/pressly/goose/v3"
 )
 
-//go:generate $GOPATH/bin/mockgen -source=$GOFILE -destination=pg_instance_mock.go  -package=pgc
-//go:generate $GOPATH/bin/mockgen                 -destination=pgx_mock.go          -package=pgc github.com/jackc/pgx/v5 Tx,Row,BatchResults
+//go:generate $GOPATH/bin/mockgen -source=$GOFILE -destination=pg_instance_mock_test.go  -package=pgc
+//go:generate $GOPATH/bin/mockgen                 -destination=pgx_mock_test.go          -package=pgc github.com/jackc/pgx/v5 Tx,Row,BatchResults
 
 // PgxPoolIface интерфейс, который ограничивает методы, передаваемые в коллбек
 type PgxPoolIface interface {

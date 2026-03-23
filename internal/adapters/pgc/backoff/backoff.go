@@ -14,7 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-//go:generate $GOPATH/bin/mockgen -source=$GOFILE -destination=backoff_mock.go -package=backoff
+//go:generate $GOPATH/bin/mockgen -source=$GOFILE -destination=backoff_mock_test.go -package=backoff
 
 type RetryableOperation interface {
 	Execute() error

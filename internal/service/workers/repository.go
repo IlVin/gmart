@@ -51,9 +51,9 @@ var (
 	ErrQueueIsEmpty = errors.New("queue is empty")
 )
 
-//go:generate $GOPATH/bin/mockgen -package=workers -destination=repository_mock.go  -source=$GOFILE
-//go:generate $GOPATH/bin/mockgen -package=workers -destination=pg_instance_mock.go -source=../../adapters/pgc/pg_instance.go
-//go:generate $GOPATH/bin/mockgen -package=workers  -destination=pgx_mock.go        github.com/jackc/pgx/v5 Tx,Row,BatchResults
+//go:generate $GOPATH/bin/mockgen -package=workers -destination=repository_mock_test.go  -source=$GOFILE
+//go:generate $GOPATH/bin/mockgen -package=workers -destination=pg_instance_mock_test.go -source=../../adapters/pgc/pg_instance.go
+//go:generate $GOPATH/bin/mockgen -package=workers  -destination=pgx_mock_test.go        github.com/jackc/pgx/v5 Tx,Row,BatchResults
 
 type WorkersMetricsRepoIFace interface {
 	ObserveDB(op domain.OpType, duration time.Duration)
