@@ -52,7 +52,7 @@ var (
 )
 
 //go:generate $GOPATH/bin/mockgen -source=$GOFILE                              -destination=repository_mock_test.go  -package=user
-//go:generate $GOPATH/bin/mockgen -source=../../adapters/pgc/pg_instance.go -destination=pg_instance_mock_test.go -package=user github.com/jackc/pgx/v5 Tx,Row,BatchResults
+//go:generate $GOPATH/bin/mockgen -source=../../adapters/pgc/pg_instance.go    -destination=pg_instance_mock_test.go -package=user
 //go:generate $GOPATH/bin/mockgen                                              -destination=pgx_mock_test.go         -package=user github.com/jackc/pgx/v5 Tx,Row,BatchResults
 
 type AuthMetrics interface {

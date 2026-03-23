@@ -70,6 +70,10 @@ var (
 	ErrWithdrawConflict  = errors.New("withdrawal for this order already exists")
 )
 
+//go:generate $GOPATH/bin/mockgen -source=$GOFILE                              -destination=repository_mock_test.go  -package=loyalty
+//go:generate $GOPATH/bin/mockgen -source=../../adapters/pgc/pg_instance.go    -destination=pg_instance_mock_test.go -package=loyalty
+//go:generate $GOPATH/bin/mockgen                                              -destination=pgx_mock_test.go         -package=loyalty github.com/jackc/pgx/v5 Tx,Row,BatchResults,Rows
+
 type LoyaltyMetrics interface {
 	ObserveDB(op domain.OpType, duration time.Duration)
 	IncWithdrawal(status string) // success, insufficient_funds, conflict
