@@ -4,7 +4,74 @@
 
 Данный проект является **учебным** и представляет собой реализацию серверной части системы лояльности. Разработка велась в строгом соответствии с [Техническим заданием (ТЗ)](./SPECIFICATION.md), которое описывает бизнес-требования к регистрации пользователей, обработке заказов и расчету бонусных баллов.
 
----
+## Быстрый старт
+
+### Установка зависимостей
+#### Make
+```bash
+sudo apt update
+sudo apt install build-essential -y
+```
+#### Git
+```bash
+sudo apt update
+sudo apt install git -y
+git config --global user.name "Ваше Имя"
+git config --global user.email "youremail@example.com"
+```
+#### Docker
+```bash
+sudo apt update
+sudo apt install docker.io docker-compose -y
+sudo systemctl enable --now docker
+sudo usermod -aG docker $USER
+```
+
+#### GoLang
+```bash
+sudo apt update
+sudo apt install golang -y
+go version
+mkdir -p ~/go/{bin,src,pkg}
+echo 'export GOPATH=$HOME/go' >> ~/.bashrc
+echo 'export PATH=$PATH:$GOPATH/bin' >> ~/.bashrc
+source ~/.bashrc
+```
+### Клонируем репозиторий
+```bash
+git clone git@github.com:IlVin/gmart.git .
+```
+
+### Команды проекта
+```bash
+make help
+```
+
+### Собираем проект
+```bash
+make build
+```
+
+### Тестируем проект
+```bash
+make test
+```
+
+### Запускаем проект
+```bash
+make up
+```
+
+### Проверяем
+На локалхосте должны появиться сервисы:
+- `localhost:2200` - БД для gophermart сервиса
+- `localhost:2201` - БД для accrual сервиса
+- `localhost:2203` - HTTP accrual сервиса
+- `localhost:2204` - HTTP gophermart сервиса
+- `localhost:9090` - HTTP Prometheus сервиса
+- `localhost:3000` - HTTP Graphana сервиса
+
+
 
 # Архитектура проекта
 
@@ -94,18 +161,4 @@ graph TD
 - `GET /metrics` — Метрики в формате Prometheus (сбор данных по Pull-модели).
 - `GET /docs` — Интерактивная документация Swagger/OpenAPI.
 
-# Запуск проекта
 
-```bash
-make build
-make up
-make logs
-```
-
-## Тестирование
-Проект покрыт Unit и интеграционными тестами.
-
-```bash
-make test
-make cover
-```
