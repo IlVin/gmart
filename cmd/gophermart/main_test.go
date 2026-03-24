@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"testing"
@@ -116,5 +117,21 @@ func TestFixEnv_Comprehensive(t *testing.T) {
 
 		FixEnv()
 		assert.Empty(t, os.Getenv("SERVICE_ACCRUAL_SYSTEM_ADDRESS"))
+	})
+}
+
+func TestSetupResources_Error(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("fails on invalid database uri", func(t *testing.T) {
+		opts := &dto.CLIOptions{
+			DatabaseURI: "invalid_uri",
+		}
+
+		reg, pg, err := SetupResources(ctx, opts)
+
+		assert.Error(t, err)
+		assert.Nil(t, reg)
+		assert.Nil(t, pg)
 	})
 }

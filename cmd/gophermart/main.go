@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"gmart/internal/adapters/metrics"
 	"gmart/internal/adapters/pgc"
 	"gmart/internal/dto"
@@ -73,51 +74,8 @@ func run() error {
 	defer stop()
 
 	cli := humacli.New(func(hooks humacli.Hooks, options *dto.CLIOptions) {
-		hooks.OnStart(func() {
-			slog.Info("Starting server",
-				slog.String("RunAddress", options.RunAddress),
-			)
 
-			// Регистратор для метрик
-			metricsReg := prometheus.NewRegistry()
-			slog.Info("Prometheus initialized")
-
-			// Инстанс PostgreSQL
-			pg, err := pgc.NewPgInstance(
-				ctx,
-				options.DatabaseURI,
-				metrics.NewForPgInstance(metricsReg),
-			)
-			if err != nil {
-				slog.Error("failed postgres initialize",
-					slog.Any("err", err),
-				)
-				return
-			}
-			defer func() {
-				slog.Info("closing database connection")
-				pg.Close()
-			}()
-
-			// Миграции
-			if options.RunMigrations {
-				slog.Info("Migration flag detected, starting...")
-				// Миграции прерывать нельзя
-				if err := pg.RunMigrations(context.Background()); err != nil {
-					slog.Error("failed to run migrations",
-						slog.Any("err", err),
-					)
-					return
-				}
-			}
-
-			// Запуск HTTP сервера
-			serve.Serve(ctx, &serve.Input{
-				Options:    options,
-				Pg:         pg,
-				MetricsReg: metricsReg,
-			})
-		})
+		hooks.OnStart(func() { Start(ctx, options) })
 
 		hooks.OnStop(func() {
 			slog.Info("HUMA.OnStop")
@@ -129,6 +87,50 @@ func run() error {
 	cli.Run()
 
 	return nil
+}
+
+// Start запускает основной цикл приложения
+func Start(ctx context.Context, options *dto.CLIOptions) {
+	slog.Info("Starting server", slog.String("RunAddress", options.RunAddress))
+
+	metricsReg, pg, err := SetupResources(ctx, options)
+	if err != nil {
+		slog.Error("resource setup failed", slog.Any("err", err))
+		return
+	}
+	defer pg.Close()
+
+	if err := serve.Serve(ctx, &serve.Input{
+		Options:    options,
+		Pg:         pg,
+		MetricsReg: metricsReg,
+	}); err != nil {
+		slog.Error("serve failed", slog.Any("err", err))
+	}
+}
+
+// SetupResources инициализирует всё необходимое для работы приложения.
+func SetupResources(ctx context.Context, options *dto.CLIOptions) (*prometheus.Registry, pgc.PgInstance, error) {
+	metricsReg := prometheus.NewRegistry()
+
+	pg, err := pgc.NewPgInstance(
+		ctx,
+		options.DatabaseURI,
+		metrics.NewForPgInstance(metricsReg),
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed postgres initialize: %w", err)
+	}
+
+	if options.RunMigrations {
+		// Миграции на отдельном контексте, чтобы не прервать на полпути
+		if err := pg.RunMigrations(context.Background()); err != nil {
+			pg.Close()
+			return nil, nil, fmt.Errorf("failed to run migrations: %w", err)
+		}
+	}
+
+	return metricsReg, pg, nil
 }
 
 func InitHuma(mux *http.ServeMux, options *dto.CLIOptions) huma.API {
