@@ -1,6 +1,6 @@
 package domain
 
 type Balance struct {
-	Current   Amount
-	Withdrawn Amount
+	Current   Amount `json:"current,omitzero"`
+	Withdrawn Amount `json:"withdrawn,omitzero"`
 }

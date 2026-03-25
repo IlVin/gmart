@@ -7,6 +7,6 @@ import (
 // WithdrawalItem описывает одну запись в истории списаний
 type Withdrawal struct {
 	OrderNumber OrderNumber `json:"order"`
-	Amount      Amount      `json:"sum"`
+	Amount      Amount      `json:"sum,omitzero"`
 	ProcessedAt time.Time   `json:"processed_at"`
 }
