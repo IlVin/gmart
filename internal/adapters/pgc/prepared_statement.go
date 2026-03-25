@@ -2,73 +2,124 @@ package pgc
 
 import (
 	"context"
+	"errors"
 	"iter"
+	"log/slog"
+
+	pgx "github.com/jackc/pgx/v5"
 )
 
-// Binder — функция, которая говорит, в какие поля структуры сканировать данные
+var (
+	ErrNilBinder = errors.New("binder is required for this operation")
+)
+
+//go:generate $GOPATH/bin/mockgen -source=$GOFILE -destination=prepared_statement_mock_test.go  -package=pgc
+
+// Binder — функция, описывающая маппинг полей структуры T при сканировании.
 type Binder[T any] func(*T) []any
 
-// PreparedStatement — типизированная обертка над SQL-запросом
-type PreparedStatement[T any] struct {
-	pg     PgInstance
-	sql    string
-	binder Binder[T]
+// Query — интерфейс описания запроса (чертеж).
+type Query[T any] interface {
+	Ctx(ctx context.Context, pg PgInstance) Executor[T]
 }
 
-// NewStatement создает новый подготовленный запрос
-func NewStatement[T any](pg PgInstance, sql string, binder Binder[T]) *PreparedStatement[T] {
-	return &PreparedStatement[T]{
-		pg:     pg,
+// Executor — интерфейс для выполнения привязанного к ресурсам запроса.
+type Executor[T any] interface {
+	All(args ...any) iter.Seq2[T, error]
+	One(args ...any) (T, error)
+	Exec(args ...any) (int64, error)
+}
+
+// NewQuery создает новое типизированное описание SQL-запроса.
+// Это "холодный" объект, он не содержит соединений и безопасен для глобального использования.
+func NewQuery[T any](sql string, binder Binder[T]) Query[T] {
+	if sql == "" {
+		panic("pgc: sql query cannot be empty")
+	}
+	return &queryDef[T]{
 		sql:    sql,
 		binder: binder,
 	}
 }
 
-// All возвращает итератор (iter.Seq2) для получения всех строк.
-// Автоматически закрывает rows при выходе из цикла for-range.
-func (ps *PreparedStatement[T]) All(ctx context.Context, args ...any) iter.Seq2[T, error] {
+// --- Внутренняя реализация ---
+
+type queryDef[T any] struct {
+	sql    string
+	binder Binder[T]
+}
+
+// Ctx — метод-мост, который привязывает запрос к ресурсам
+func (qd *queryDef[T]) Ctx(ctx context.Context, pg PgInstance) Executor[T] {
+	return &boundQuery[T]{
+		qd:  qd,
+		ctx: ctx,
+		pg:  pg,
+	}
+}
+
+type boundQuery[T any] struct {
+	qd  *queryDef[T]
+	ctx context.Context
+	pg  PgInstance
+}
+
+// All выполняет запрос и возвращает итератор.
+func (bq *boundQuery[T]) All(args ...any) iter.Seq2[T, error] {
 	return func(yield func(T, error) bool) {
 		var zero T
-
-		rows, err := ps.pg.Query(ctx, ps.sql, args...)
+		if bq.qd.binder == nil {
+			slog.Error("pgc: call All() on query without binder", "sql", bq.qd.sql)
+			yield(zero, ErrNilBinder)
+			return
+		}
+		rows, err := bq.pg.Query(bq.ctx, bq.qd.sql, args...)
 		if err != nil {
 			yield(zero, err)
 			return
 		}
-		defer rows.Close() // ГАРАНТИЯ: соединение вернется в пул при выходе из итератора
+		defer rows.Close()
 
 		for rows.Next() {
 			var item T
-			dest := ps.binder(&item)
-
-			if err := rows.Scan(dest...); err != nil {
-				yield(zero, err)
+			if err := rows.Scan(bq.qd.binder(&item)...); err != nil {
+				if !yield(zero, err) {
+					return
+				}
 				return
 			}
-
-			// Передаем объект в цикл. Если там break — yield вернет false и мы выйдем.
 			if !yield(item, nil) {
 				return
 			}
 		}
-
 		if err := rows.Err(); err != nil {
 			yield(zero, err)
 		}
 	}
 }
 
-// One возвращает ровно одну строку
-func (ps *PreparedStatement[T]) One(ctx context.Context, args ...any) (T, error) {
+// One выполняет запрос и возвращает одну строку.
+func (bq *boundQuery[T]) One(args ...any) (T, error) {
 	var item T
-	row, err := ps.pg.Fetch(ctx, ps.sql, args...)
+	if bq.qd.binder == nil {
+		slog.Error("pgc: call One() on query without binder", "sql", bq.qd.sql)
+		return item, ErrNilBinder
+	}
+	row, err := bq.pg.Fetch(bq.ctx, bq.qd.sql, args...)
 	if err != nil {
 		return item, err
 	}
-
-	if err := row.Scan(ps.binder(&item)...); err != nil {
+	if row == nil {
+		return item, pgx.ErrNoRows
+	}
+	if err := row.Scan(bq.qd.binder(&item)...); err != nil {
 		return item, err
 	}
-
 	return item, nil
+}
+
+// Exec исполняет INSERT/UPDATE/DELETE и возвращает кол-во затронутых строк
+func (bq *boundQuery[T]) Exec(args ...any) (int64, error) {
+	tag, err := bq.pg.Exec(bq.ctx, bq.qd.sql, args...)
+	return tag.RowsAffected(), err
 }

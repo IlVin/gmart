@@ -87,9 +87,10 @@ type LoyaltyRepo struct {
 	metrics LoyaltyMetrics
 	now     func() time.Time
 
-	// Подготовленные SELECT запросы
-	getWithdrawals *pgc.PreparedStatement[domain.Withdrawal]
-	getBalance     *pgc.PreparedStatement[domain.Balance]
+	// Подготовленные запросы
+	getWithdrawals pgc.Query[domain.Withdrawal]
+	getBalance     pgc.Query[domain.Balance]
+	withdraw       pgc.Query[string]
 }
 
 func NewLoyaltyRepo(pg pgc.PgInstance, m LoyaltyMetrics) *LoyaltyRepo {
@@ -98,19 +99,24 @@ func NewLoyaltyRepo(pg pgc.PgInstance, m LoyaltyMetrics) *LoyaltyRepo {
 		metrics: m,
 		now:     time.Now,
 
-		getWithdrawals: pgc.NewStatement[domain.Withdrawal](
-			pg,
+		getWithdrawals: pgc.NewQuery[domain.Withdrawal](
 			sqlGetWithdrawals,
 			func(w *domain.Withdrawal) []any {
 				return []any{&w.OrderNumber, &w.Amount, &w.ProcessedAt}
 			},
 		),
 
-		getBalance: pgc.NewStatement[domain.Balance](
-			pg,
+		getBalance: pgc.NewQuery[domain.Balance](
 			sqlGetBalance,
 			func(b *domain.Balance) []any {
 				return []any{&b.Current, &b.Withdrawn}
+			},
+		),
+
+		withdraw: pgc.NewQuery[string](
+			sqlWithdraw,
+			func(w *string) []any {
+				return []any{w}
 			},
 		),
 	}
@@ -125,7 +131,7 @@ func (r *LoyaltyRepo) GetBalance(ctx context.Context, userID domain.UserID) (dom
 		}
 	}()
 
-	b, err := r.getBalance.One(ctx, userID)
+	b, err := r.getBalance.Ctx(ctx, r.pg).One(userID)
 	if err != nil {
 		if !errors.Is(err, pgx.ErrNoRows) {
 			slog.Error("db query failed", "op", "LoyaltyRepo.GetBalance", "err", err, "user_id", userID)
@@ -146,11 +152,7 @@ func (r *LoyaltyRepo) Withdraw(ctx context.Context, userID domain.UserID, order 
 		}
 	}()
 
-	var status string
-	err := r.pg.PgPool(ctx, func(ctx context.Context, pool pgc.PgxPoolIface) error {
-		return pool.QueryRow(ctx, sqlWithdraw, userID, amount, order, r.now()).Scan(&status)
-	})
-
+	status, err := r.withdraw.Ctx(ctx, r.pg).One(userID, amount, order, r.now())
 	if err != nil {
 		slog.Error("db query failed",
 			slog.String("op", "LoyaltyRepo.Withdraw"),
@@ -190,5 +192,5 @@ func (r *LoyaltyRepo) Withdraw(ctx context.Context, userID domain.UserID, order 
 
 // GetWithdrawals возвращает историю списаний пользователя
 func (r *LoyaltyRepo) GetWithdrawals(ctx context.Context, userID domain.UserID) iter.Seq2[domain.Withdrawal, error] {
-	return r.getWithdrawals.All(ctx, userID)
+	return r.getWithdrawals.Ctx(ctx, r.pg).All(userID)
 }

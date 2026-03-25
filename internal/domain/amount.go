@@ -31,6 +31,11 @@ func (a Amount) IsZero() bool {
 	return a == 0
 }
 
+// String возвращает строку
+func (a Amount) String() string {
+	return fmt.Sprintf("%.2f руб", a.ToRubles())
+}
+
 // Schema сообщает Huma, как этот тип должен выглядеть в OpenAPI
 func (a Amount) Schema(r huma.Registry) *huma.Schema {
 	multipleOf := 0.01

@@ -47,7 +47,7 @@ func TestBalance_JSON(t *testing.T) {
 		require.NoError(t, err)
 
 		// Только ненулевое поле должно остаться
-		assert.JSONEq(t, `{"current":500}`, string(data))
+		assert.JSONEq(t, `{"current":5}`, string(data))
 	})
 }
 

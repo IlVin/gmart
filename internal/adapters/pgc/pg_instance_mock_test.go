@@ -325,6 +325,26 @@ func (mr *MockPgInstanceMockRecorder) Close() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockPgInstance)(nil).Close))
 }
 
+// Exec mocks base method.
+func (m *MockPgInstance) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, sql}
+	for _, a := range args {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "Exec", varargs...)
+	ret0, _ := ret[0].(pgconn.CommandTag)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Exec indicates an expected call of Exec.
+func (mr *MockPgInstanceMockRecorder) Exec(ctx, sql any, args ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, sql}, args...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Exec", reflect.TypeOf((*MockPgInstance)(nil).Exec), varargs...)
+}
+
 // Fetch mocks base method.
 func (m *MockPgInstance) Fetch(ctx context.Context, sql string, args ...any) (pgx.Row, error) {
 	m.ctrl.T.Helper()

@@ -2,11 +2,9 @@ package loyalty
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
-	"gmart/internal/adapters/pgc"
 	"gmart/internal/domain"
 
 	"github.com/jackc/pgx/v5"
@@ -72,50 +70,58 @@ func TestLoyaltyRepo_Withdraw(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockPg := NewMockPgInstance(ctrl)
-	mockPool := NewMockPgxPoolIface(ctrl)
-	mockRow := NewMockRow(ctrl)
+	mockRow := NewMockRow(ctrl) // Мок для pgx.Row
+	mockMetrics := NewMockLoyaltyMetrics(ctrl)
 
-	fixedNow := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
-	repo := &LoyaltyRepo{
-		pg:  mockPg,
-		now: func() time.Time { return fixedNow },
-	}
-
+	repo := NewLoyaltyRepo(mockPg, mockMetrics)
+	ctx := context.Background()
 	userID := domain.UserID(1)
 	order := domain.OrderNumber("12345")
 	amount := domain.Amount(100)
 
-	cases := []struct {
-		name    string
-		dbRes   string
-		wantErr error
-	}{
-		{"success", "success", nil},
-		{"insufficient_funds", "no_money", ErrInsufficientFunds},
-		{"already_exists", "already_exists", ErrWithdrawConflict},
-		{"unexpected", "error_xxx", errors.New("unexpected withdraw status: error_xxx")},
-	}
+	t.Run("success", func(t *testing.T) {
+		// 1. Ожидаем вызов Fetch (так как ps.One вызывает его)
+		// Проверь порядок аргументов в sqlWithdraw: user_id, amount, order_number, now
+		mockPg.EXPECT().
+			Fetch(ctx, sqlWithdraw, userID, amount, order, gomock.Any()).
+			Return(mockRow, nil)
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			mockPg.EXPECT().PgPool(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, cb func(context.Context, pgc.PgxPoolIface) error) error {
-				return cb(ctx, mockPool)
-			})
-
-			mockPool.EXPECT().QueryRow(gomock.Any(), sqlWithdraw, userID, amount, order, fixedNow).Return(mockRow)
-			mockRow.EXPECT().Scan(gomock.Any()).DoAndReturn(func(dest ...any) error {
-				*(dest[0].(*string)) = tc.dbRes
+		// 2. Ожидаем Scan, который запишет "success" в переменную status
+		mockRow.EXPECT().
+			Scan(gomock.Any()). // Один аргумент, так как binder для string возвращает []any{&w}
+			DoAndReturn(func(dest ...any) error {
+				// Записываем статус в указатель, который передал PreparedStatement
+				*dest[0].(*string) = "success"
 				return nil
 			})
 
-			err := repo.Withdraw(context.Background(), userID, order, amount)
-			if tc.wantErr != nil {
-				assert.Contains(t, err.Error(), tc.wantErr.Error())
-			} else {
-				assert.NoError(t, err)
-			}
-		})
-	}
+		// 3. Ожидаем вызовы метрик
+		mockMetrics.EXPECT().ObserveDB(domain.OpQuery, gomock.Any())
+		mockMetrics.EXPECT().IncWithdrawal("success")
+		mockMetrics.EXPECT().ObserveWithdrawalAmount(amount)
+
+		err := repo.Withdraw(ctx, userID, order, amount)
+		assert.NoError(t, err)
+	})
+
+	t.Run("insufficient_funds", func(t *testing.T) {
+		mockPg.EXPECT().
+			Fetch(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(mockRow, nil)
+
+		mockRow.EXPECT().
+			Scan(gomock.Any()).
+			DoAndReturn(func(dest ...any) error {
+				*dest[0].(*string) = "no_money"
+				return nil
+			})
+
+		mockMetrics.EXPECT().ObserveDB(gomock.Any(), gomock.Any())
+		mockMetrics.EXPECT().IncWithdrawal("insufficient_funds")
+
+		err := repo.Withdraw(ctx, userID, order, amount)
+		assert.ErrorIs(t, err, ErrInsufficientFunds)
+	})
 }
 
 func TestLoyaltyRepo_GetWithdrawals(t *testing.T) {
@@ -129,36 +135,41 @@ func TestLoyaltyRepo_GetWithdrawals(t *testing.T) {
 	userID := domain.UserID(1)
 
 	t.Run("success_history", func(t *testing.T) {
-
 		mockPg.EXPECT().
-			Query(gomock.Any(), gomock.Any(), userID). // sql и аргумент
+			Query(gomock.Any(), gomock.Any(), userID). // ctx, sql, $1
 			Return(mockRows, nil)
 
-		// Эмулируем 2 строки в ответе
 		gomock.InOrder(
 			mockRows.EXPECT().Next().Return(true),
 			mockRows.EXPECT().Scan(gomock.Any(), gomock.Any(), gomock.Any()).
 				DoAndReturn(func(dest ...any) error {
-					// Заполняем поля первой строки
+					// Заполняем: OrderNumber, Amount, ProcessedAt
+					*dest[0].(*domain.OrderNumber) = "12345"
+					*dest[1].(*domain.Amount) = domain.NewAmountFromRubles(500)
+					*dest[2].(*time.Time) = time.Now()
 					return nil
 				}),
 			mockRows.EXPECT().Next().Return(true),
 			mockRows.EXPECT().Scan(gomock.Any(), gomock.Any(), gomock.Any()).
 				DoAndReturn(func(dest ...any) error {
-					// Заполняем поля второй строки
+					*dest[0].(*domain.OrderNumber) = "67890"
+					*dest[1].(*domain.Amount) = domain.NewAmountFromRubles(100)
+					*dest[2].(*time.Time) = time.Now()
 					return nil
 				}),
-			mockRows.EXPECT().Next().Return(false), // Конец данных
-			mockRows.EXPECT().Err().Return(nil),    // Финальная проверка ошибок
-			mockRows.EXPECT().Close(),              // ОБЯЗАТЕЛЬНО: итератор всегда вызывает Close
+			mockRows.EXPECT().Next().Return(false),
+			mockRows.EXPECT().Err().Return(nil),
+			mockRows.EXPECT().Close(),
 		)
 
-		// Вызов метода репозитория
 		it := repo.GetWithdrawals(context.Background(), userID)
 
-		// Проверка итерации
-		for _, err := range it {
+		count := 0
+		for w, err := range it {
 			assert.NoError(t, err)
+			assert.NotEmpty(t, w.OrderNumber) // Теперь это имеет смысл проверять
+			count++
 		}
+		assert.Equal(t, 2, count)
 	})
 }

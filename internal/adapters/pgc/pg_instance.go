@@ -76,6 +76,9 @@ type PgInstance interface {
 
 	// Query возвращает итератор по строкам (pgx.Rows)
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+
+	// Exec выполняет запрос (INSERT/UPDATE/DELETE)
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 }
 
 const ProbeInterval int64 = 5
@@ -152,6 +155,10 @@ func (h *pgInstance) Fetch(ctx context.Context, sql string, args ...any) (pgx.Ro
 
 func (h *pgInstance) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
 	return h.pgPool.Query(ctx, sql, args...)
+}
+
+func (h *pgInstance) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	return h.pgPool.Exec(ctx, sql, args...)
 }
 
 func (h *pgInstance) RunMigrations(ctx context.Context) error {
