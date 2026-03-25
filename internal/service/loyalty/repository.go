@@ -205,6 +205,10 @@ func (r *LoyaltyRepo) GetWithdrawals(ctx context.Context, userID domain.UserID) 
 
 		for rows.Next() {
 			var item domain.Withdrawal
+			if ctx.Err() != nil {
+				yield(domain.Withdrawal{}, ctx.Err()) // Не смотрим на возвращенное значение yield - все равно заканчиваем итерацию
+				return
+			}
 			if err := rows.Scan(&item.OrderNumber, &item.Amount, &item.ProcessedAt); err != nil {
 				yield(domain.Withdrawal{}, err) // Не смотрим на возвращенное значение yield - все равно заканчиваем итерацию
 				return
