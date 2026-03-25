@@ -43,13 +43,12 @@ func (m *MockLoyaltyRepoIface) EXPECT() *MockLoyaltyRepoIfaceMockRecorder {
 }
 
 // GetBalance mocks base method.
-func (m *MockLoyaltyRepoIface) GetBalance(ctx context.Context, userID domain.UserID) (domain.Amount, domain.Amount, error) {
+func (m *MockLoyaltyRepoIface) GetBalance(ctx context.Context, userID domain.UserID) (domain.Balance, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetBalance", ctx, userID)
-	ret0, _ := ret[0].(domain.Amount)
-	ret1, _ := ret[1].(domain.Amount)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
+	ret0, _ := ret[0].(domain.Balance)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // GetBalance indicates an expected call of GetBalance.

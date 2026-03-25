@@ -3,6 +3,7 @@ package loyalty
 import (
 	"context"
 	"errors"
+	"iter"
 	"testing"
 	"time"
 
@@ -26,14 +27,14 @@ func TestLoyalty_GetBalance(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
 		mockRepo.EXPECT().
 			GetBalance(gomock.Any(), userID).
-			Return(domain.Amount(10050), domain.Amount(5000), nil).
+			Return(domain.Balance{Current: domain.Amount(10050), Withdrawn: domain.Amount(5000)}, nil).
 			Times(1)
 
-		curr, with, err := svc.GetBalance(context.Background(), userID)
+		b, err := svc.GetBalance(context.Background(), userID)
 
 		require.NoError(t, err)
-		assert.Equal(t, domain.Amount(10050), curr)
-		assert.Equal(t, domain.Amount(5000), with)
+		assert.Equal(t, domain.Amount(10050), b.Current)
+		assert.Equal(t, domain.Amount(5000), b.Withdrawn)
 	})
 }
 
@@ -97,12 +98,25 @@ func TestLoyalty_GetWithdrawals(t *testing.T) {
 			},
 		}
 
+		// 1. Создаем итератор из слайса (Go 1.23 style)
+		// Т.к. Seq2 ожидает два значения (V, error),
+		// нам нужно подготовить функцию, которая будет их отдавать.
+		iterator := func(yield func(domain.Withdrawal, error) bool) {
+			for _, w := range expected {
+				if !yield(w, nil) {
+					return
+				}
+			}
+		}
+
+		// 2. Исправляем Return: теперь возвращаем ТОЛЬКО итератор (1 аргумент)
 		mockRepo.EXPECT().
 			GetWithdrawals(gomock.Any(), userID).
-			Return(expected, nil).
+			Return(iter.Seq2[domain.Withdrawal, error](iterator)). // Приводим к типу
 			Times(1)
 
 		res := []domain.Withdrawal{}
+		// 3. Твой код в цикле уже правильный
 		for rs, err := range svc.GetWithdrawals(context.Background(), userID) {
 			require.NoError(t, err)
 			res = append(res, rs)

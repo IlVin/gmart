@@ -86,6 +86,10 @@ type LoyaltyRepo struct {
 	pg      pgc.PgInstance
 	metrics LoyaltyMetrics
 	now     func() time.Time
+
+	// Подготовленные SELECT запросы
+	getWithdrawals *pgc.PreparedStatement[domain.Withdrawal]
+	getBalance     *pgc.PreparedStatement[domain.Balance]
 }
 
 func NewLoyaltyRepo(pg pgc.PgInstance, m LoyaltyMetrics) *LoyaltyRepo {
@@ -93,11 +97,27 @@ func NewLoyaltyRepo(pg pgc.PgInstance, m LoyaltyMetrics) *LoyaltyRepo {
 		pg:      pg,
 		metrics: m,
 		now:     time.Now,
+
+		getWithdrawals: pgc.NewStatement[domain.Withdrawal](
+			pg,
+			sqlGetWithdrawals,
+			func(w *domain.Withdrawal) []any {
+				return []any{&w.OrderNumber, &w.Amount, &w.ProcessedAt}
+			},
+		),
+
+		getBalance: pgc.NewStatement[domain.Balance](
+			pg,
+			sqlGetBalance,
+			func(b *domain.Balance) []any {
+				return []any{&b.Current, &b.Withdrawn}
+			},
+		),
 	}
 }
 
 // GetBalance возвращает текущий остаток и общую сумму списаний
-func (r *LoyaltyRepo) GetBalance(ctx context.Context, userID domain.UserID) (current domain.Amount, withdrawn domain.Amount, err error) {
+func (r *LoyaltyRepo) GetBalance(ctx context.Context, userID domain.UserID) (domain.Balance, error) {
 	start := r.now()
 	defer func() {
 		if r.metrics != nil {
@@ -105,21 +125,16 @@ func (r *LoyaltyRepo) GetBalance(ctx context.Context, userID domain.UserID) (cur
 		}
 	}()
 
-	err = r.pg.PgPool(ctx, func(ctx context.Context, pool pgc.PgxPoolIface) error {
-		err := pool.QueryRow(ctx, sqlGetBalance, userID).Scan(&current, &withdrawn)
-		if errors.Is(err, pgx.ErrNoRows) {
-			current, withdrawn = 0, 0
-			return nil
-		}
-		return err
-	})
-
+	b, err := r.getBalance.One(ctx, userID)
 	if err != nil {
-		slog.Error("db query failed", "op", "LoyaltyRepo.GetBalance", "err", err, "user_id", userID)
-		return 0, 0, fmt.Errorf("get balance fail: %w", err)
+		if !errors.Is(err, pgx.ErrNoRows) {
+			slog.Error("db query failed", "op", "LoyaltyRepo.GetBalance", "err", err, "user_id", userID)
+			return domain.Balance{Current: 0, Withdrawn: 0}, fmt.Errorf("get balance fail: %w", err)
+		}
+		return b, nil
 	}
 
-	return current, withdrawn, nil
+	return b, nil
 }
 
 // Withdraw регистрирует списание баллов
@@ -175,53 +190,5 @@ func (r *LoyaltyRepo) Withdraw(ctx context.Context, userID domain.UserID, order 
 
 // GetWithdrawals возвращает историю списаний пользователя
 func (r *LoyaltyRepo) GetWithdrawals(ctx context.Context, userID domain.UserID) iter.Seq2[domain.Withdrawal, error] {
-
-	return func(yield func(domain.Withdrawal, error) bool) {
-		// yield(v, err) bool отправляет данные в цикл.
-
-		start := r.now()
-
-		var rows pgx.Rows
-		var err error
-		err = r.pg.PgPool(ctx, func(ctx context.Context, pool pgc.PgxPoolIface) error {
-			rows, err = pool.Query(ctx, sqlGetWithdrawals, userID)
-			return err // Возвращаем ошибку для сбора статистики драйвером PgInstance
-		})
-		defer rows.Close()
-
-		// Собираем метрики, но это уже будет не все время запрос + доставка данных, а только время работы запроса.
-		if r.metrics != nil {
-			r.metrics.ObserveDB(domain.OpQuery, time.Since(start))
-		}
-
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				yield(domain.Withdrawal{}, ErrEmpty) // Не смотрим на возвращенное значение yield - все равно заканчиваем итерацию
-				return
-			}
-			yield(domain.Withdrawal{}, err) // Не смотрим на возвращенное значение yield - все равно заканчиваем итерацию
-			return
-		}
-
-		for rows.Next() {
-			var item domain.Withdrawal
-			if ctx.Err() != nil {
-				yield(domain.Withdrawal{}, ctx.Err()) // Не смотрим на возвращенное значение yield - все равно заканчиваем итерацию
-				return
-			}
-			if err := rows.Scan(&item.OrderNumber, &item.Amount, &item.ProcessedAt); err != nil {
-				yield(domain.Withdrawal{}, err) // Не смотрим на возвращенное значение yield - все равно заканчиваем итерацию
-				return
-			}
-			// Если yield вернул false (например, в цикле вызвали break), прекращаем работу.
-			if !yield(item, nil) {
-				return
-			}
-		}
-
-		if err := rows.Err(); err != nil {
-			yield(domain.Withdrawal{}, err)
-		}
-	}
-
+	return r.getWithdrawals.All(ctx, userID)
 }

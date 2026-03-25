@@ -31,15 +31,15 @@ func (l *Loyalty) getBalanceHandler() func(ctx context.Context, in *balanceInput
 			return nil, huma.Error401Unauthorized("пользователь не авторизован")
 		}
 
-		current, withdrawn, err := l.GetBalance(ctx, userID)
+		b, err := l.GetBalance(ctx, userID)
 		if err != nil {
 			slog.Error("get balance fail", "user_id", userID, "err", err)
 			return nil, huma.Error500InternalServerError("внутренняя ошибка сервера")
 		}
 
 		resp := &balanceResponse{}
-		resp.Body.Current = current
-		resp.Body.Withdrawn = withdrawn
+		resp.Body.Current = b.Current
+		resp.Body.Withdrawn = b.Withdrawn
 		return resp, nil
 	}
 }

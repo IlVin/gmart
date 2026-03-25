@@ -26,7 +26,7 @@ import (
 )
 
 //go:generate $GOPATH/bin/mockgen -source=$GOFILE -destination=pg_instance_mock_test.go  -package=pgc
-//go:generate $GOPATH/bin/mockgen                 -destination=pgx_mock_test.go          -package=pgc github.com/jackc/pgx/v5 Tx,Row,BatchResults
+//go:generate $GOPATH/bin/mockgen                 -destination=pgx_mock_test.go          -package=pgc github.com/jackc/pgx/v5 Tx,Row,BatchResults,Rows
 
 // PgxPoolIface интерфейс, который ограничивает методы, передаваемые в коллбек
 type PgxPoolIface interface {
@@ -70,6 +70,12 @@ type PgInstance interface {
 
 	// PgPool вызывает коллбек и передает ему целяй пул коннектов к PostgreSQL
 	PgPool(ctx context.Context, cb func(ctx context.Context, pool PgxPoolIface) error) error
+
+	// Fetch возвращает одну строку (pgx.Row)
+	Fetch(ctx context.Context, sql string, args ...any) (pgx.Row, error)
+
+	// Query возвращает итератор по строкам (pgx.Rows)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
 const ProbeInterval int64 = 5
@@ -138,6 +144,14 @@ func NewPgInstance(ctx context.Context, connString string, metrics PgInstanceMet
 	h.Ping(ctx)
 
 	return h, nil
+}
+
+func (h *pgInstance) Fetch(ctx context.Context, sql string, args ...any) (pgx.Row, error) {
+	return h.pgPool.QueryRow(ctx, sql, args...), nil
+}
+
+func (h *pgInstance) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	return h.pgPool.Query(ctx, sql, args...)
 }
 
 func (h *pgInstance) RunMigrations(ctx context.Context) error {

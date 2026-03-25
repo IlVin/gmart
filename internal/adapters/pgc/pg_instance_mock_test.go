@@ -325,6 +325,26 @@ func (mr *MockPgInstanceMockRecorder) Close() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockPgInstance)(nil).Close))
 }
 
+// Fetch mocks base method.
+func (m *MockPgInstance) Fetch(ctx context.Context, sql string, args ...any) (pgx.Row, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, sql}
+	for _, a := range args {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "Fetch", varargs...)
+	ret0, _ := ret[0].(pgx.Row)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Fetch indicates an expected call of Fetch.
+func (mr *MockPgInstanceMockRecorder) Fetch(ctx, sql any, args ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, sql}, args...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Fetch", reflect.TypeOf((*MockPgInstance)(nil).Fetch), varargs...)
+}
+
 // PgPool mocks base method.
 func (m *MockPgInstance) PgPool(ctx context.Context, cb func(context.Context, PgxPoolIface) error) error {
 	m.ctrl.T.Helper()
@@ -351,6 +371,26 @@ func (m *MockPgInstance) Ping(ctx context.Context) error {
 func (mr *MockPgInstanceMockRecorder) Ping(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Ping", reflect.TypeOf((*MockPgInstance)(nil).Ping), ctx)
+}
+
+// Query mocks base method.
+func (m *MockPgInstance) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, sql}
+	for _, a := range args {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "Query", varargs...)
+	ret0, _ := ret[0].(pgx.Rows)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Query indicates an expected call of Query.
+func (mr *MockPgInstanceMockRecorder) Query(ctx, sql any, args ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, sql}, args...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Query", reflect.TypeOf((*MockPgInstance)(nil).Query), varargs...)
 }
 
 // RunMigrations mocks base method.

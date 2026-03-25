@@ -16,7 +16,7 @@ var (
 
 // LoyaltyRepoIface описывает методы репозитория для мокирования
 type LoyaltyRepoIface interface {
-	GetBalance(ctx context.Context, userID domain.UserID) (current, withdrawn domain.Amount, err error)
+	GetBalance(ctx context.Context, userID domain.UserID) (domain.Balance, error)
 	Withdraw(ctx context.Context, userID domain.UserID, order domain.OrderNumber, amount domain.Amount) error
 	GetWithdrawals(ctx context.Context, userID domain.UserID) iter.Seq2[domain.Withdrawal, error]
 }
@@ -37,7 +37,7 @@ func NewLoyalty(loyaltyRepo LoyaltyRepoIface) *Loyalty {
 // ============ UseCase ============
 
 // GetBalance возвращает баланс пользователя
-func (s *Loyalty) GetBalance(ctx context.Context, userID domain.UserID) (current, withdrawn domain.Amount, err error) {
+func (s *Loyalty) GetBalance(ctx context.Context, userID domain.UserID) (domain.Balance, error) {
 	return s.repo.GetBalance(ctx, userID)
 }
 

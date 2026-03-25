@@ -10,7 +10,9 @@ import (
 	"gmart/internal/adapters/pgc/fcounter"
 	"gmart/internal/domain"
 
+	pgx "github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
@@ -177,5 +179,49 @@ func TestPgInstance_PanicRecovery(t *testing.T) {
 
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "panic recovered")
+	})
+}
+
+func TestPgInstance_Fetch(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	// Это сгенерированный mockgen-ом класс
+	mockPool := NewMockpgxPoolDriverIface(ctrl)
+	h := &pgInstance{pgPool: mockPool}
+
+	ctx := context.Background()
+	// Теперь mockPool.EXPECT().QueryRow(...) будет доступен,
+	// так как mockgen прочитал обновленный интерфейс.
+	mockPool.EXPECT().QueryRow(ctx, "SELECT 1", "arg").Return(nil)
+
+	_, err := h.Fetch(ctx, "SELECT 1", "arg")
+	require.NoError(t, err)
+}
+
+func TestPgInstance_Query(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockPool := NewMockpgxPoolDriverIface(ctrl)
+	h := &pgInstance{pgPool: mockPool}
+	ctx := context.Background()
+	sql := "SELECT * FROM table"
+
+	t.Run("success query", func(t *testing.T) {
+		mockRows := (pgx.Rows)(nil) // или реальный мок rows если нужно
+		mockPool.EXPECT().Query(ctx, sql, 123).Return(mockRows, nil)
+
+		rows, err := h.Query(ctx, sql, 123)
+		assert.NoError(t, err)
+		assert.Equal(t, mockRows, rows)
+	})
+
+	t.Run("query error", func(t *testing.T) {
+		mockPool.EXPECT().Query(ctx, sql, 123).Return(nil, assert.AnError)
+
+		rows, err := h.Query(ctx, sql, 123)
+		assert.Error(t, err)
+		assert.Nil(t, rows)
 	})
 }
