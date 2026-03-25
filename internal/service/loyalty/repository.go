@@ -218,6 +218,10 @@ func (r *LoyaltyRepo) GetWithdrawals(ctx context.Context, userID domain.UserID) 
 				return
 			}
 		}
+
+		if err := rows.Err(); err != nil {
+			yield(domain.Withdrawal{}, err)
+		}
 	}
 
 }
