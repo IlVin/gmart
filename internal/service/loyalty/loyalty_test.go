@@ -102,9 +102,12 @@ func TestLoyalty_GetWithdrawals(t *testing.T) {
 			Return(expected, nil).
 			Times(1)
 
-		res, err := svc.GetWithdrawals(context.Background(), userID)
+		res := []domain.Withdrawal{}
+		for rs, err := range svc.GetWithdrawals(context.Background(), userID) {
+			require.NoError(t, err)
+			res = append(res, rs)
+		}
 
-		require.NoError(t, err)
 		assert.Len(t, res, 1)
 		assert.Equal(t, domain.OrderNumber("2377225624"), res[0].OrderNumber)
 	})

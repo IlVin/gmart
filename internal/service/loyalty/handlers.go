@@ -113,15 +113,17 @@ func (l *Loyalty) getWithdrawalsHandler() func(ctx context.Context, in *withdraw
 			return nil, huma.Error401Unauthorized("пользователь не авторизован")
 		}
 
-		res, err := l.GetWithdrawals(ctx, userID)
-		if err != nil {
-			slog.Error("get withdrawals fail", "user_id", userID, "err", err)
-			return nil, huma.Error500InternalServerError("внутренняя ошибка сервера")
-		}
-
-		if len(res) == 0 {
-			// Возвращаем 204 без тела
-			return &withdrawalsResponse{Status: 204}, nil
+		res := make([]domain.Withdrawal, 0, 0)
+		for it, err := range l.GetWithdrawals(ctx, userID) {
+			if err != nil {
+				if errors.Is(err, ErrEmpty) {
+					// Возвращаем 204 без тела
+					return &withdrawalsResponse{Status: 204}, nil
+				}
+				slog.Error("get withdrawals fail", "user_id", userID, "err", err)
+				return nil, huma.Error500InternalServerError("внутренняя ошибка сервера")
+			}
+			res = append(res, it)
 		}
 
 		return &withdrawalsResponse{

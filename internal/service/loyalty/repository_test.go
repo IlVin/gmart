@@ -144,8 +144,11 @@ func TestLoyaltyRepo_GetWithdrawals(t *testing.T) {
 		mockRows.EXPECT().Close()
 		mockRows.EXPECT().Err().Return(nil)
 
-		res, err := repo.GetWithdrawals(context.Background(), userID)
-		assert.NoError(t, err)
+		res := []domain.Withdrawal{}
+		for rs, err := range repo.GetWithdrawals(context.Background(), userID) {
+			assert.NoError(t, err)
+			res = append(res, rs)
+		}
 		assert.Len(t, res, 2)
 		assert.Equal(t, domain.OrderNumber("order1"), res[0].OrderNumber)
 	})

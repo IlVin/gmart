@@ -114,7 +114,7 @@ type pgInstance struct {
 	metrics   PgInstanceMetrics
 }
 
-func NewPgInstance(ctx context.Context, connString string, metrics PgInstanceMetrics) (*pgInstance, error) {
+func NewPgInstance(ctx context.Context, connString string, metrics PgInstanceMetrics) (PgInstance, error) {
 	pool, err := pgxpool.New(ctx, connString)
 
 	if err != nil {

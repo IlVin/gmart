@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 	"log/slog"
 	"time"
 
@@ -68,6 +69,7 @@ const sqlWithdraw = `
 var (
 	ErrInsufficientFunds = errors.New("insufficient balance")
 	ErrWithdrawConflict  = errors.New("withdrawal for this order already exists")
+	ErrEmpty             = errors.New("empty result")
 )
 
 //go:generate $GOPATH/bin/mockgen -source=$GOFILE                              -destination=repository_mock_test.go  -package=loyalty
@@ -172,37 +174,46 @@ func (r *LoyaltyRepo) Withdraw(ctx context.Context, userID domain.UserID, order 
 }
 
 // GetWithdrawals возвращает историю списаний пользователя
-func (r *LoyaltyRepo) GetWithdrawals(ctx context.Context, userID domain.UserID) ([]domain.Withdrawal, error) {
-	start := r.now()
-	defer func() {
+func (r *LoyaltyRepo) GetWithdrawals(ctx context.Context, userID domain.UserID) iter.Seq2[domain.Withdrawal, error] {
+
+	return func(yield func(domain.Withdrawal, error) bool) {
+		// yield(v, err) bool отправляет данные в цикл.
+
+		start := r.now()
+
+		var rows pgx.Rows
+		var err error
+		err = r.pg.PgPool(ctx, func(ctx context.Context, pool pgc.PgxPoolIface) error {
+			rows, err = pool.Query(ctx, sqlGetWithdrawals, userID)
+			return err // Возвращаем ошибку для сбора статистики драйвером PgInstance
+		})
+		defer rows.Close()
+
+		// Собираем метрики, но это уже будет не все время запрос + доставка данных, а только время работы запроса.
 		if r.metrics != nil {
 			r.metrics.ObserveDB(domain.OpQuery, time.Since(start))
 		}
-	}()
 
-	var result []domain.Withdrawal
-
-	err := r.pg.PgPool(ctx, func(ctx context.Context, pool pgc.PgxPoolIface) error {
-		rows, err := pool.Query(ctx, sqlGetWithdrawals, userID)
 		if err != nil {
-			return err
+			if errors.Is(err, pgx.ErrNoRows) {
+				yield(domain.Withdrawal{}, ErrEmpty) // Не смотрим на возвращенное значение yield - все равно заканчиваем итерацию
+				return
+			}
+			yield(domain.Withdrawal{}, err) // Не смотрим на возвращенное значение yield - все равно заканчиваем итерацию
+			return
 		}
-		defer rows.Close()
 
 		for rows.Next() {
 			var item domain.Withdrawal
 			if err := rows.Scan(&item.OrderNumber, &item.Amount, &item.ProcessedAt); err != nil {
-				return err
+				yield(domain.Withdrawal{}, err) // Не смотрим на возвращенное значение yield - все равно заканчиваем итерацию
+				return
 			}
-			result = append(result, item)
+			// Если yield вернул false (например, в цикле вызвали break), прекращаем работу.
+			if !yield(item, nil) {
+				return
+			}
 		}
-		return rows.Err()
-	})
-
-	if err != nil {
-		slog.Error("db query failed", "op", "LoyaltyRepo.GetWithdrawals", "err", err, "user_id", userID)
-		return nil, fmt.Errorf("get withdrawals fail: %w", err)
 	}
 
-	return result, nil
 }
