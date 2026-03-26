@@ -101,7 +101,9 @@ func (a *AccrualWrk) Run(ctx context.Context, wrkCount int) {
 			case <-ctx.Done():
 				// Тут не можем вызвать Shutdown, т.к. он вызывает a.wg.Wait() (Shutdown нужно вызывать в основном потоке для Graceful Shutdown)
 				a.isShutdown.Store(true)
+				a.cond.L.Lock()
 				a.cond.Broadcast()
+				a.cond.L.Unlock()
 				return
 			}
 		}
@@ -141,7 +143,9 @@ func (a *AccrualWrk) Run(ctx context.Context, wrkCount int) {
 
 func (a *AccrualWrk) Shutdown() {
 	a.isShutdown.Store(true)
+	a.cond.L.Lock()
 	a.cond.Broadcast()
+	a.cond.L.Unlock()
 	a.wg.Wait()
 	close(a.dbLimiter)
 }
