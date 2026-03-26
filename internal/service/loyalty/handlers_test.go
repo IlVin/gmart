@@ -72,4 +72,63 @@ func TestLoyalty_Handlers(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, 200, resp.Status)
 	})
+
+	t.Run("GetBalance: Success 200", func(t *testing.T) {
+		handler := svc.getBalanceHandler()
+		expectedBalance := domain.Balance{Current: 500, Withdrawn: 100}
+
+		mockRepo.EXPECT().
+			GetBalance(gomock.Any(), userID).
+			Return(expectedBalance, nil)
+
+		resp, err := handler(authCtx, &balanceInput{})
+
+		assert.NoError(t, err)
+		assert.Equal(t, expectedBalance.Current, resp.Body.Current)
+		assert.Equal(t, expectedBalance.Withdrawn, resp.Body.Withdrawn)
+	})
+
+	t.Run("Withdraw: Conflict 409", func(t *testing.T) {
+		handler := svc.withdrawHandler()
+		in := &withdrawInput{}
+		in.Body.Order = "12345678903"
+
+		mockRepo.EXPECT().
+			Withdraw(gomock.Any(), userID, gomock.Any(), gomock.Any()).
+			Return(ErrWithdrawConflict)
+
+		_, err := handler(authCtx, in)
+
+		var humaErr huma.StatusError
+		if assert.ErrorAs(t, err, &humaErr) {
+			assert.Equal(t, 409, humaErr.GetStatus())
+		}
+	})
+
+	t.Run("GetWithdrawals: Success 200", func(t *testing.T) {
+		handler := svc.getWithdrawalsHandler()
+
+		// Создаем итератор с данными
+		withdrawals := []domain.Withdrawal{
+			{OrderNumber: "123", Amount: 500},
+		}
+
+		mockRepo.EXPECT().
+			GetWithdrawals(gomock.Any(), userID).
+			Return(func(yield func(domain.Withdrawal, error) bool) {
+				for _, w := range withdrawals {
+					if !yield(w, nil) {
+						return
+					}
+				}
+			})
+
+		resp, err := handler(authCtx, &withdrawalsInput{})
+
+		assert.NoError(t, err)
+		assert.Equal(t, 200, resp.Status)
+		assert.Len(t, resp.Body, 1)
+		assert.Equal(t, domain.OrderNumber("123"), resp.Body[0].OrderNumber)
+	})
+
 }
