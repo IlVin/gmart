@@ -1,9 +1,9 @@
 name: CI
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, 'iter*' ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main, master, 'iter*' ]
 
 permissions:
   contents: write
