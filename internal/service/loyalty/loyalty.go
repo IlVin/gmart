@@ -5,6 +5,7 @@ import (
 	"errors"
 	"gmart/internal/domain"
 	"gmart/internal/model/luhn"
+	"iter"
 )
 
 var (
@@ -15,9 +16,9 @@ var (
 
 // LoyaltyRepoIface описывает методы репозитория для мокирования
 type LoyaltyRepoIface interface {
-	GetBalance(ctx context.Context, userID domain.UserID) (current, withdrawn domain.Amount, err error)
+	GetBalance(ctx context.Context, userID domain.UserID) (domain.Balance, error)
 	Withdraw(ctx context.Context, userID domain.UserID, order domain.OrderNumber, amount domain.Amount) error
-	GetWithdrawals(ctx context.Context, userID domain.UserID) ([]domain.Withdrawal, error)
+	GetWithdrawals(ctx context.Context, userID domain.UserID) iter.Seq2[domain.Withdrawal, error]
 }
 
 // ============ Class ============
@@ -36,7 +37,7 @@ func NewLoyalty(loyaltyRepo LoyaltyRepoIface) *Loyalty {
 // ============ UseCase ============
 
 // GetBalance возвращает баланс пользователя
-func (s *Loyalty) GetBalance(ctx context.Context, userID domain.UserID) (current, withdrawn domain.Amount, err error) {
+func (s *Loyalty) GetBalance(ctx context.Context, userID domain.UserID) (domain.Balance, error) {
 	return s.repo.GetBalance(ctx, userID)
 }
 
@@ -53,6 +54,6 @@ func (s *Loyalty) Withdraw(ctx context.Context, userID domain.UserID, order doma
 }
 
 // GetWithdrawals возвращает историю списаний
-func (s *Loyalty) GetWithdrawals(ctx context.Context, userID domain.UserID) ([]domain.Withdrawal, error) {
+func (s *Loyalty) GetWithdrawals(ctx context.Context, userID domain.UserID) iter.Seq2[domain.Withdrawal, error] {
 	return s.repo.GetWithdrawals(ctx, userID)
 }

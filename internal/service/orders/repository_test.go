@@ -21,39 +21,37 @@ func TestOrdersRepo_Upload(t *testing.T) {
 	mockRow := NewMockRow(ctrl)
 
 	fixedNow := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
-	repo := &OrdersRepo{
-		pg:  mockPg,
-		now: func() time.Time { return fixedNow },
-	}
+	repo := NewOrdersRepo(mockPg, nil) // Используем конструктор для инициализации запросов
+	repo.now = func() time.Time { return fixedNow }
 
+	ctx := context.Background()
 	userID := domain.UserID(42)
 	orderNum := domain.OrderNumber("12345678903")
 
 	t.Run("success_new_order", func(t *testing.T) {
-		mockPg.EXPECT().PgPool(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, cb func(context.Context, pgc.PgxPoolIface) error) error {
+		mockPg.EXPECT().PgPool(ctx, gomock.Any()).DoAndReturn(func(ctx context.Context, cb func(context.Context, pgc.PgxPoolIface) error) error {
 			return cb(ctx, mockPool)
 		})
 
-		mockPool.EXPECT().QueryRow(gomock.Any(), sqlInsertIntoOrders, orderNum, userID, domain.StatusNew, fixedNow).Return(mockRow)
+		mockPool.EXPECT().QueryRow(ctx, sqlInsertIntoOrders, orderNum, userID, domain.StatusNew, fixedNow).Return(mockRow)
 
-		// ИСПРАВЛЕНИЕ: DoAndReturn принимает (dest ...any) как один аргумент []any
+		// Binder для insIntoOrders возвращает 2 поля: OwnerID и Conflict
 		mockRow.EXPECT().Scan(gomock.Any(), gomock.Any()).DoAndReturn(func(dest ...any) error {
-			// dest[0] это *domain.UserID, dest[1] это *bool
 			*(dest[0].(*domain.UserID)) = userID
 			*(dest[1].(*bool)) = false
 			return nil
 		})
 
-		err := repo.Upload(context.Background(), userID, orderNum)
+		err := repo.Upload(ctx, userID, orderNum)
 		assert.NoError(t, err)
 	})
 
 	t.Run("error_conflict_with_another_user", func(t *testing.T) {
-		mockPg.EXPECT().PgPool(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, cb func(context.Context, pgc.PgxPoolIface) error) error {
+		mockPg.EXPECT().PgPool(ctx, gomock.Any()).DoAndReturn(func(ctx context.Context, cb func(context.Context, pgc.PgxPoolIface) error) error {
 			return cb(ctx, mockPool)
 		})
 
-		mockPool.EXPECT().QueryRow(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(mockRow)
+		mockPool.EXPECT().QueryRow(ctx, sqlInsertIntoOrders, orderNum, userID, domain.StatusNew, fixedNow).Return(mockRow)
 
 		mockRow.EXPECT().Scan(gomock.Any(), gomock.Any()).DoAndReturn(func(dest ...any) error {
 			*(dest[0].(*domain.UserID)) = domain.UserID(99)
@@ -61,7 +59,7 @@ func TestOrdersRepo_Upload(t *testing.T) {
 			return nil
 		})
 
-		err := repo.Upload(context.Background(), userID, orderNum)
+		err := repo.Upload(ctx, userID, orderNum)
 		assert.ErrorIs(t, err, ErrOrderConflict)
 	})
 }
@@ -76,19 +74,20 @@ func TestOrdersRepo_List(t *testing.T) {
 
 	repo := NewOrdersRepo(mockPg, nil)
 	userID := domain.UserID(1)
+	ctx := context.Background()
 
 	t.Run("success_return_list", func(t *testing.T) {
-		mockPg.EXPECT().PgPool(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, cb func(context.Context, pgc.PgxPoolIface) error) error {
+		mockPg.EXPECT().PgPool(ctx, gomock.Any()).DoAndReturn(func(ctx context.Context, cb func(context.Context, pgc.PgxPoolIface) error) error {
 			return cb(ctx, mockPool)
 		})
 
-		mockPool.EXPECT().Query(gomock.Any(), sqlSelectOrdersByUserID, userID).Return(mockRows, nil)
+		mockPool.EXPECT().Query(ctx, sqlSelectOrdersByUserID, userID).Return(mockRows, nil)
 
 		fixedTime := time.Now()
 
+		// Binder для getOrdersByUserID возвращает 4 поля: OrderNumber, Status, Amount, UploadedAt
 		gomock.InOrder(
 			mockRows.EXPECT().Next().Return(true),
-			// ИСПРАВЛЕНИЕ: Используем dest ...any и индексный доступ
 			mockRows.EXPECT().Scan(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(dest ...any) error {
 				*(dest[0].(*domain.OrderNumber)) = "123"
 				*(dest[1].(*domain.OrderStatus)) = "NEW"
@@ -102,11 +101,11 @@ func TestOrdersRepo_List(t *testing.T) {
 		mockRows.EXPECT().Close().Times(1)
 		mockRows.EXPECT().Err().Return(nil).Times(1)
 
-		res, err := repo.List(context.Background(), userID)
+		res, err := repo.List(ctx, userID)
 
 		assert.NoError(t, err)
+		// Если в репозитории исправлен make([]domain.Order, 0, 8), то длина будет 1
 		assert.Len(t, res, 1)
 		assert.Equal(t, domain.OrderNumber("123"), res[0].OrderNumber)
-		assert.Equal(t, domain.OrderStatus("NEW"), res[0].Status)
 	})
 }

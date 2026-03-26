@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 	"log/slog"
 	"time"
 
@@ -68,6 +69,7 @@ const sqlWithdraw = `
 var (
 	ErrInsufficientFunds = errors.New("insufficient balance")
 	ErrWithdrawConflict  = errors.New("withdrawal for this order already exists")
+	ErrEmpty             = errors.New("empty result")
 )
 
 //go:generate $GOPATH/bin/mockgen -source=$GOFILE                              -destination=repository_mock_test.go  -package=loyalty
@@ -84,6 +86,11 @@ type LoyaltyRepo struct {
 	pg      pgc.PgInstance
 	metrics LoyaltyMetrics
 	now     func() time.Time
+
+	// Подготовленные запросы
+	getWithdrawals pgc.Query[domain.Withdrawal]
+	getBalance     pgc.Query[domain.Balance]
+	withdraw       pgc.Query[string]
 }
 
 func NewLoyaltyRepo(pg pgc.PgInstance, m LoyaltyMetrics) *LoyaltyRepo {
@@ -91,11 +98,32 @@ func NewLoyaltyRepo(pg pgc.PgInstance, m LoyaltyMetrics) *LoyaltyRepo {
 		pg:      pg,
 		metrics: m,
 		now:     time.Now,
+
+		getWithdrawals: pgc.NewQuery[domain.Withdrawal](
+			sqlGetWithdrawals,
+			func(w *domain.Withdrawal) []any {
+				return []any{&w.OrderNumber, &w.Amount, &w.ProcessedAt}
+			},
+		),
+
+		getBalance: pgc.NewQuery[domain.Balance](
+			sqlGetBalance,
+			func(b *domain.Balance) []any {
+				return []any{&b.Current, &b.Withdrawn}
+			},
+		),
+
+		withdraw: pgc.NewQuery[string](
+			sqlWithdraw,
+			func(w *string) []any {
+				return []any{w}
+			},
+		),
 	}
 }
 
 // GetBalance возвращает текущий остаток и общую сумму списаний
-func (r *LoyaltyRepo) GetBalance(ctx context.Context, userID domain.UserID) (current domain.Amount, withdrawn domain.Amount, err error) {
+func (r *LoyaltyRepo) GetBalance(ctx context.Context, userID domain.UserID) (domain.Balance, error) {
 	start := r.now()
 	defer func() {
 		if r.metrics != nil {
@@ -103,21 +131,16 @@ func (r *LoyaltyRepo) GetBalance(ctx context.Context, userID domain.UserID) (cur
 		}
 	}()
 
-	err = r.pg.PgPool(ctx, func(ctx context.Context, pool pgc.PgxPoolIface) error {
-		err := pool.QueryRow(ctx, sqlGetBalance, userID).Scan(&current, &withdrawn)
-		if errors.Is(err, pgx.ErrNoRows) {
-			current, withdrawn = 0, 0
-			return nil
-		}
-		return err
-	})
-
+	b, err := pgc.FetchOne(ctx, r.getBalance(r.pg), userID)
 	if err != nil {
-		slog.Error("db query failed", "op", "LoyaltyRepo.GetBalance", "err", err, "user_id", userID)
-		return 0, 0, fmt.Errorf("get balance fail: %w", err)
+		if !errors.Is(err, pgx.ErrNoRows) {
+			slog.Error("db query failed", "op", "LoyaltyRepo.GetBalance", "err", err, "user_id", userID)
+			return domain.Balance{Current: 0, Withdrawn: 0}, fmt.Errorf("get balance fail: %w", err)
+		}
+		return domain.Balance{Current: 0, Withdrawn: 0}, nil
 	}
 
-	return current, withdrawn, nil
+	return b, nil
 }
 
 // Withdraw регистрирует списание баллов
@@ -129,11 +152,7 @@ func (r *LoyaltyRepo) Withdraw(ctx context.Context, userID domain.UserID, order 
 		}
 	}()
 
-	var status string
-	err := r.pg.PgPool(ctx, func(ctx context.Context, pool pgc.PgxPoolIface) error {
-		return pool.QueryRow(ctx, sqlWithdraw, userID, amount, order, r.now()).Scan(&status)
-	})
-
+	status, err := pgc.FetchOne(ctx, r.withdraw(r.pg), userID, amount, order, r.now())
 	if err != nil {
 		slog.Error("db query failed",
 			slog.String("op", "LoyaltyRepo.Withdraw"),
@@ -172,37 +191,6 @@ func (r *LoyaltyRepo) Withdraw(ctx context.Context, userID domain.UserID, order 
 }
 
 // GetWithdrawals возвращает историю списаний пользователя
-func (r *LoyaltyRepo) GetWithdrawals(ctx context.Context, userID domain.UserID) ([]domain.Withdrawal, error) {
-	start := r.now()
-	defer func() {
-		if r.metrics != nil {
-			r.metrics.ObserveDB(domain.OpQuery, time.Since(start))
-		}
-	}()
-
-	var result []domain.Withdrawal
-
-	err := r.pg.PgPool(ctx, func(ctx context.Context, pool pgc.PgxPoolIface) error {
-		rows, err := pool.Query(ctx, sqlGetWithdrawals, userID)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-
-		for rows.Next() {
-			var item domain.Withdrawal
-			if err := rows.Scan(&item.OrderNumber, &item.Amount, &item.ProcessedAt); err != nil {
-				return err
-			}
-			result = append(result, item)
-		}
-		return rows.Err()
-	})
-
-	if err != nil {
-		slog.Error("db query failed", "op", "LoyaltyRepo.GetWithdrawals", "err", err, "user_id", userID)
-		return nil, fmt.Errorf("get withdrawals fail: %w", err)
-	}
-
-	return result, nil
+func (r *LoyaltyRepo) GetWithdrawals(ctx context.Context, userID domain.UserID) iter.Seq2[domain.Withdrawal, error] {
+	return pgc.QueryAll(ctx, r.getWithdrawals(r.pg), userID)
 }

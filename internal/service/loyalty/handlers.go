@@ -31,15 +31,15 @@ func (l *Loyalty) getBalanceHandler() func(ctx context.Context, in *balanceInput
 			return nil, huma.Error401Unauthorized("пользователь не авторизован")
 		}
 
-		current, withdrawn, err := l.GetBalance(ctx, userID)
+		b, err := l.GetBalance(ctx, userID)
 		if err != nil {
 			slog.Error("get balance fail", "user_id", userID, "err", err)
 			return nil, huma.Error500InternalServerError("внутренняя ошибка сервера")
 		}
 
 		resp := &balanceResponse{}
-		resp.Body.Current = current
-		resp.Body.Withdrawn = withdrawn
+		resp.Body.Current = b.Current
+		resp.Body.Withdrawn = b.Withdrawn
 		return resp, nil
 	}
 }
@@ -113,15 +113,17 @@ func (l *Loyalty) getWithdrawalsHandler() func(ctx context.Context, in *withdraw
 			return nil, huma.Error401Unauthorized("пользователь не авторизован")
 		}
 
-		res, err := l.GetWithdrawals(ctx, userID)
-		if err != nil {
-			slog.Error("get withdrawals fail", "user_id", userID, "err", err)
-			return nil, huma.Error500InternalServerError("внутренняя ошибка сервера")
-		}
-
-		if len(res) == 0 {
-			// Возвращаем 204 без тела
-			return &withdrawalsResponse{Status: 204}, nil
+		res := make([]domain.Withdrawal, 0, 0)
+		for it, err := range l.GetWithdrawals(ctx, userID) {
+			if err != nil {
+				if errors.Is(err, ErrEmpty) {
+					// Возвращаем 204 без тела
+					return &withdrawalsResponse{Status: 204}, nil
+				}
+				slog.Error("get withdrawals fail", "user_id", userID, "err", err)
+				return nil, huma.Error500InternalServerError("внутренняя ошибка сервера")
+			}
+			res = append(res, it)
 		}
 
 		return &withdrawalsResponse{

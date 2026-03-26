@@ -2,6 +2,8 @@ package domain
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestAmount_MarshalJSON(t *testing.T) {
@@ -78,4 +80,20 @@ func BenchmarkAmount_MarshalJSON(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, _ = m.MarshalJSON()
 	}
+}
+
+func TestBalance(t *testing.T) {
+	// Если данные пришли из API в рублях
+	b1 := Balance{
+		Current:   NewAmountFromRubles(100.50), // Станет 10050
+		Withdrawn: NewAmountFromRubles(42.13),  // Станет 4213
+	}
+
+	// Если данные пришли из БД (где они уже в копейках/int)
+	b2 := Balance{
+		Current:   NewAmountFromCoins(10050),
+		Withdrawn: NewAmountFromCoins(4213),
+	}
+
+	assert.Equal(t, b1, b2)
 }

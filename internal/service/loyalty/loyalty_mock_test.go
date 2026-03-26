@@ -12,6 +12,7 @@ package loyalty
 import (
 	context "context"
 	domain "gmart/internal/domain"
+	iter "iter"
 	reflect "reflect"
 
 	gomock "go.uber.org/mock/gomock"
@@ -42,13 +43,12 @@ func (m *MockLoyaltyRepoIface) EXPECT() *MockLoyaltyRepoIfaceMockRecorder {
 }
 
 // GetBalance mocks base method.
-func (m *MockLoyaltyRepoIface) GetBalance(ctx context.Context, userID domain.UserID) (domain.Amount, domain.Amount, error) {
+func (m *MockLoyaltyRepoIface) GetBalance(ctx context.Context, userID domain.UserID) (domain.Balance, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetBalance", ctx, userID)
-	ret0, _ := ret[0].(domain.Amount)
-	ret1, _ := ret[1].(domain.Amount)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
+	ret0, _ := ret[0].(domain.Balance)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // GetBalance indicates an expected call of GetBalance.
@@ -58,12 +58,11 @@ func (mr *MockLoyaltyRepoIfaceMockRecorder) GetBalance(ctx, userID any) *gomock.
 }
 
 // GetWithdrawals mocks base method.
-func (m *MockLoyaltyRepoIface) GetWithdrawals(ctx context.Context, userID domain.UserID) ([]domain.Withdrawal, error) {
+func (m *MockLoyaltyRepoIface) GetWithdrawals(ctx context.Context, userID domain.UserID) iter.Seq2[domain.Withdrawal, error] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetWithdrawals", ctx, userID)
-	ret0, _ := ret[0].([]domain.Withdrawal)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret0, _ := ret[0].(iter.Seq2[domain.Withdrawal, error])
+	return ret0
 }
 
 // GetWithdrawals indicates an expected call of GetWithdrawals.

@@ -3,12 +3,38 @@ package domain
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"strconv"
 
 	"github.com/danielgtaylor/huma/v2"
 )
 
 type Amount uint64
+
+// NewAmountFromCoins просто оборачивает копейки (150) в тип Amount
+func NewAmountFromCoins(c int64) Amount {
+	return Amount(c)
+}
+
+// NewAmountFromRubles конвертирует рубли (1.50) в копейки (150) с округлением
+func NewAmountFromRubles(r float64) Amount {
+	return Amount(math.Round(r * 100))
+}
+
+// ToRubles возвращает значение в человекочитаемых рублях (для логов или UI)
+func (a Amount) ToRubles() float64 {
+	return float64(a) / 100
+}
+
+// IsZero возвращает true, если сумма равна 0
+func (a Amount) IsZero() bool {
+	return a == 0
+}
+
+// String возвращает строку
+func (a Amount) String() string {
+	return fmt.Sprintf("%.2f руб", a.ToRubles())
+}
 
 // Schema сообщает Huma, как этот тип должен выглядеть в OpenAPI
 func (a Amount) Schema(r huma.Registry) *huma.Schema {
