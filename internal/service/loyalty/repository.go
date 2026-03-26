@@ -137,7 +137,7 @@ func (r *LoyaltyRepo) GetBalance(ctx context.Context, userID domain.UserID) (dom
 			slog.Error("db query failed", "op", "LoyaltyRepo.GetBalance", "err", err, "user_id", userID)
 			return domain.Balance{Current: 0, Withdrawn: 0}, fmt.Errorf("get balance fail: %w", err)
 		}
-		return b, nil
+		return domain.Balance{Current: 0, Withdrawn: 0}, nil
 	}
 
 	return b, nil
