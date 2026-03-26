@@ -46,10 +46,19 @@ type OrdersMetrics interface {
 	ObserveListSize(size int)     // метрика для мониторинга объема данных
 }
 
+type orderInsertResult struct {
+	OwnerID  domain.UserID
+	Conflict bool
+}
+
 type OrdersRepo struct {
 	pg      pgc.PgInstance
 	metrics OrdersMetrics
 	now     func() time.Time
+
+	// Подготовленные запросы
+	getOrdersByUserID pgc.Query[domain.Order]
+	insIntoOrders     pgc.Query[orderInsertResult]
 }
 
 func NewOrdersRepo(pg pgc.PgInstance, m OrdersMetrics) *OrdersRepo {
@@ -57,6 +66,20 @@ func NewOrdersRepo(pg pgc.PgInstance, m OrdersMetrics) *OrdersRepo {
 		pg:      pg,
 		metrics: m,
 		now:     time.Now,
+
+		getOrdersByUserID: pgc.NewQuery(
+			sqlSelectOrdersByUserID,
+			func(o *domain.Order) []any {
+				return []any{&o.OrderNumber, &o.Status, &o.Amount, &o.UploadedAt}
+			},
+		),
+
+		insIntoOrders: pgc.NewQuery(
+			sqlInsertIntoOrders,
+			func(r *orderInsertResult) []any {
+				return []any{&r.OwnerID, &r.Conflict}
+			},
+		),
 	}
 }
 
@@ -69,12 +92,9 @@ func (r *OrdersRepo) Upload(ctx context.Context, userID domain.UserID, orderNumb
 		}
 	}()
 
-	var ownerID domain.UserID
-	var isConflict bool
+	res, err := pgc.FetchOne(ctx, r.insIntoOrders(r.pg), orderNumber, userID, domain.StatusNew, r.now())
 
-	if err := r.pg.PgPool(ctx, func(ctx context.Context, pool pgc.PgxPoolIface) error {
-		return pool.QueryRow(ctx, sqlInsertIntoOrders, orderNumber, userID, domain.StatusNew, r.now()).Scan(&ownerID, &isConflict)
-	}); err != nil {
+	if err != nil {
 		slog.Error("db query failed",
 			slog.String("op", "OrdersRepo.Upload"),
 			slog.Any("err", err),
@@ -82,12 +102,12 @@ func (r *OrdersRepo) Upload(ctx context.Context, userID domain.UserID, orderNumb
 		return fmt.Errorf("upload order fail: %w", err)
 	}
 
-	if isConflict {
-		if ownerID != userID {
+	if res.Conflict {
+		if res.OwnerID != userID {
 			if r.metrics != nil {
 				r.metrics.IncOrderUpload("conflict")
 			}
-			slog.Warn("order conflict", "requested_by", userID, "actual_owner", ownerID, "order", orderNumber)
+			slog.Warn("order conflict", "requested_by", userID, "actual_owner", res.OwnerID, "order", orderNumber)
 			return ErrOrderConflict
 		}
 		if r.metrics != nil {
@@ -111,28 +131,13 @@ func (r *OrdersRepo) List(ctx context.Context, userID domain.UserID) ([]domain.O
 		}
 	}()
 
-	var result []domain.Order
-
-	err := r.pg.PgPool(ctx, func(ctx context.Context, pool pgc.PgxPoolIface) error {
-		rows, err := pool.Query(ctx, sqlSelectOrdersByUserID, userID)
+	result := make([]domain.Order, 0, 3)
+	for item, err := range pgc.QueryAll(ctx, r.getOrdersByUserID(r.pg), userID) {
 		if err != nil {
-			return err
+			slog.Error("db query failed", "op", "OrdersRepo.List", "err", err, "user_id", userID)
+			return nil, fmt.Errorf("list orders fail: %w", err)
 		}
-		defer rows.Close()
-
-		for rows.Next() {
-			item := domain.Order{}
-			if err := rows.Scan(&item.OrderNumber, &item.Status, &item.Amount, &item.UploadedAt); err != nil {
-				return fmt.Errorf("scan order row fail: %w", err)
-			}
-			result = append(result, item)
-		}
-		return rows.Err()
-	})
-
-	if err != nil {
-		slog.Error("db query failed", "op", "OrdersRepo.List", "err", err, "user_id", userID)
-		return nil, fmt.Errorf("list orders fail: %w", err)
+		result = append(result, item)
 	}
 
 	if r.metrics != nil {
