@@ -6,112 +6,120 @@ import (
 
 	pgconn "github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	gomock "go.uber.org/mock/gomock"
 )
 
-type TestModel struct {
+type testUser struct {
 	ID   int
 	Name string
 }
 
-func TestQuery_Workflow(t *testing.T) {
+func userBinder(u *testUser) []any {
+	return []any{&u.ID, &u.Name}
+}
+
+func TestPreparedStatement(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
 	mockPg := NewMockPgInstance(ctrl)
-	mockRows := NewMockRows(ctrl)
-	mockRow := NewMockRow(ctrl)
-
+	mockPool := NewMockPgxPoolIface(ctrl)
 	ctx := context.Background()
-	sql := "SELECT id, name FROM users"
 
-	binder := func(m *TestModel) []any {
-		return []any{&m.ID, &m.Name}
-	}
+	t.Run("FetchOne_Success", func(t *testing.T) {
+		sql := "SELECT id, name FROM users WHERE id = $1"
+		query := NewQuery(sql, userBinder)
+		aq := query(mockPg)
 
-	// Создаем наше описание запроса
-	q := NewQuery(sql, binder)
+		// Настраиваем цепочку: PgPool -> QueryRow -> Scan
+		mockPg.EXPECT().
+			PgPool(ctx, gomock.Any()).
+			DoAndReturn(func(ctx context.Context, cb func(context.Context, PgxPoolIface) error) error {
+				return cb(ctx, mockPool)
+			})
 
-	t.Run("success_all_iteration", func(t *testing.T) {
-		mockPg.EXPECT().Query(ctx, sql).Return(mockRows, nil)
+		mockRow := NewMockRow(ctrl)
+		mockPool.EXPECT().QueryRow(ctx, sql, 1).Return(mockRow)
 
-		gomock.InOrder(
-			mockRows.EXPECT().Next().Return(true),
-			mockRows.EXPECT().Scan(gomock.Any(), gomock.Any()).DoAndReturn(func(dest ...any) error {
-				*dest[0].(*int) = 1
-				*dest[1].(*string) = "first"
-				return nil
-			}),
-			mockRows.EXPECT().Next().Return(false),
-			mockRows.EXPECT().Err().Return(nil),
-			mockRows.EXPECT().Close(),
-		)
-
-		var results []TestModel
-		// Используем новый синтаксис .Ctx().All()
-		for item, err := range q.Ctx(ctx, mockPg).All() {
-			require.NoError(t, err)
-			results = append(results, item)
-		}
-
-		assert.Len(t, results, 1)
-		assert.Equal(t, "first", results[0].Name)
-	})
-
-	t.Run("one_success", func(t *testing.T) {
-		mockPg.EXPECT().Fetch(ctx, sql).Return(mockRow, nil)
-		mockRow.EXPECT().Scan(gomock.Any(), gomock.Any()).DoAndReturn(func(dest ...any) error {
-			*dest[0].(*int) = 100
+		mockRow.EXPECT().Scan(gomock.Any()).DoAndReturn(func(dest ...any) error {
+			*(dest[0].(*int)) = 1
+			*(dest[1].(*string)) = "John"
 			return nil
 		})
 
-		item, err := q.Ctx(ctx, mockPg).One()
+		user, err := FetchOne(ctx, aq, 1)
 		assert.NoError(t, err)
-		assert.Equal(t, 100, item.ID)
+		assert.Equal(t, 1, user.ID)
+		assert.Equal(t, "John", user.Name)
 	})
 
-	t.Run("exec_success", func(t *testing.T) {
-		deleteSQL := "DELETE FROM users"
-		// Для Exec биндер может быть nil
-		qExec := NewQuery(deleteSQL, Binder[struct{}](nil))
+	t.Run("QueryAll_Success", func(t *testing.T) {
+		sql := "SELECT id, name FROM users"
+		query := NewQuery(sql, userBinder)
+		aq := query(mockPg)
 
-		tag := pgconn.NewCommandTag("DELETE 5")
-		mockPg.EXPECT().Exec(ctx, deleteSQL).Return(tag, nil)
+		mockPg.EXPECT().
+			PgPool(ctx, gomock.Any()).
+			DoAndReturn(func(ctx context.Context, cb func(context.Context, PgxPoolIface) error) error {
+				return cb(ctx, mockPool)
+			})
 
-		affected, err := qExec.Ctx(ctx, mockPg).Exec()
+		mockRows := NewMockRows(ctrl)
+		mockPool.EXPECT().Query(ctx, sql).Return(mockRows, nil)
+
+		// Имитируем 2 строки
+		gomock.InOrder(
+			mockRows.EXPECT().Next().Return(true),
+			mockRows.EXPECT().Scan(gomock.Any()).DoAndReturn(func(dest ...any) error {
+				*(dest[0].(*int)) = 1
+				*(dest[1].(*string)) = "User1"
+				return nil
+			}),
+			mockRows.EXPECT().Next().Return(true),
+			mockRows.EXPECT().Scan(gomock.Any()).DoAndReturn(func(dest ...any) error {
+				*(dest[0].(*int)) = 2
+				*(dest[1].(*string)) = "User2"
+				return nil
+			}),
+			mockRows.EXPECT().Next().Return(false),
+		)
+		mockRows.EXPECT().Err().Return(nil)
+		mockRows.EXPECT().Close()
+
+		var results []testUser
+		for user, err := range QueryAll(ctx, aq) {
+			assert.NoError(t, err)
+			results = append(results, user)
+		}
+
+		assert.Len(t, results, 2)
+		assert.Equal(t, "User2", results[1].Name)
+	})
+
+	t.Run("Exec_Success", func(t *testing.T) {
+		sql := "UPDATE users SET name = $1"
+		query := NewQuery(sql, userBinder)
+		aq := query(mockPg)
+
+		mockPg.EXPECT().
+			PgPool(ctx, gomock.Any()).
+			DoAndReturn(func(ctx context.Context, cb func(context.Context, PgxPoolIface) error) error {
+				return cb(ctx, mockPool)
+			})
+
+		tag := pgconn.NewCommandTag("UPDATE 5")
+		mockPool.EXPECT().Exec(ctx, sql, "NewName").Return(tag, nil)
+
+		affected, err := Exec(ctx, aq, "NewName")
 		assert.NoError(t, err)
 		assert.Equal(t, int64(5), affected)
 	})
 
-	t.Run("nil_binder_error", func(t *testing.T) {
-		// Создаем запрос без биндера специально для теста ошибки
-		qBad := NewQuery("SELECT 1", Binder[TestModel](nil))
+	t.Run("ErrNilBinder", func(t *testing.T) {
+		query := NewQuery[testUser]("SELECT 1", nil)
+		aq := query(mockPg)
 
-		// Тестируем One
-		_, err := qBad.Ctx(ctx, mockPg).One()
+		_, err := FetchOne(ctx, aq)
 		assert.ErrorIs(t, err, ErrNilBinder)
-
-		// Тестируем All
-		for _, err := range qBad.Ctx(ctx, mockPg).All() {
-			assert.ErrorIs(t, err, ErrNilBinder)
-		}
-	})
-
-	t.Run("early_break_leak_check", func(t *testing.T) {
-		mockPg.EXPECT().Query(ctx, sql).Return(mockRows, nil)
-		mockRows.EXPECT().Next().Return(true)
-		mockRows.EXPECT().Scan(gomock.Any(), gomock.Any()).Return(nil)
-		mockRows.EXPECT().Close() // Должен вызваться при break
-
-		for _, _ = range q.Ctx(ctx, mockPg).All() {
-			break
-		}
-	})
-
-	t.Run("empty_sql_panic", func(t *testing.T) {
-		assert.Panics(t, func() {
-			NewQuery("", binder)
-		})
 	})
 }

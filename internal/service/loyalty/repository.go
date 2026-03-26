@@ -131,7 +131,7 @@ func (r *LoyaltyRepo) GetBalance(ctx context.Context, userID domain.UserID) (dom
 		}
 	}()
 
-	b, err := r.getBalance.Ctx(ctx, r.pg).One(userID)
+	b, err := pgc.FetchOne(ctx, r.getBalance(r.pg), userID)
 	if err != nil {
 		if !errors.Is(err, pgx.ErrNoRows) {
 			slog.Error("db query failed", "op", "LoyaltyRepo.GetBalance", "err", err, "user_id", userID)
@@ -152,7 +152,7 @@ func (r *LoyaltyRepo) Withdraw(ctx context.Context, userID domain.UserID, order 
 		}
 	}()
 
-	status, err := r.withdraw.Ctx(ctx, r.pg).One(userID, amount, order, r.now())
+	status, err := pgc.FetchOne(ctx, r.withdraw(r.pg), userID, amount, order, r.now())
 	if err != nil {
 		slog.Error("db query failed",
 			slog.String("op", "LoyaltyRepo.Withdraw"),
@@ -192,5 +192,5 @@ func (r *LoyaltyRepo) Withdraw(ctx context.Context, userID domain.UserID, order 
 
 // GetWithdrawals возвращает историю списаний пользователя
 func (r *LoyaltyRepo) GetWithdrawals(ctx context.Context, userID domain.UserID) iter.Seq2[domain.Withdrawal, error] {
-	return r.getWithdrawals.Ctx(ctx, r.pg).All(userID)
+	return pgc.QueryAll(ctx, r.getWithdrawals(r.pg), userID)
 }

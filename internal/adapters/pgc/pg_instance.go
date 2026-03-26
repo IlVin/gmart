@@ -25,6 +25,8 @@ import (
 	goose "github.com/pressly/goose/v3"
 )
 
+const probeInterval int64 = 5
+
 //go:generate $GOPATH/bin/mockgen -source=$GOFILE -destination=pg_instance_mock_test.go  -package=pgc
 //go:generate $GOPATH/bin/mockgen                 -destination=pgx_mock_test.go          -package=pgc github.com/jackc/pgx/v5 Tx,Row,BatchResults,Rows
 
@@ -70,18 +72,7 @@ type PgInstance interface {
 
 	// PgPool вызывает коллбек и передает ему целяй пул коннектов к PostgreSQL
 	PgPool(ctx context.Context, cb func(ctx context.Context, pool PgxPoolIface) error) error
-
-	// Fetch возвращает одну строку (pgx.Row)
-	Fetch(ctx context.Context, sql string, args ...any) (pgx.Row, error)
-
-	// Query возвращает итератор по строкам (pgx.Rows)
-	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
-
-	// Exec выполняет запрос (INSERT/UPDATE/DELETE)
-	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 }
-
-const ProbeInterval int64 = 5
 
 // Отрываем PgInterface от pgxpool.Pool таким враппером
 type pgxPoolDriverIface interface {
@@ -109,13 +100,12 @@ type PgInstanceMetrics interface {
 // PgInstance коннектор, предохраняющий БД от дополнительной нагрузки, когда БД "плохо"
 // и предохраняющий приложение от каскадного сбоя при проблемах с БД
 type pgInstance struct {
-	mu              sync.Mutex
-	_               cpu.CacheLinePad
-	instanceName    string
-	pgPool          pgxPoolDriverIface
-	isReady         atomic.Bool
-	isClosed        atomic.Bool
-	lastCheckResult atomic.Value
+	mu           sync.Mutex
+	_            cpu.CacheLinePad
+	instanceName string
+	pgPool       pgxPoolDriverIface
+	isReady      atomic.Bool
+	isClosed     atomic.Bool
 
 	failures  *fcounter.FailureCounter
 	repeater  *backoff.PgBackoff
@@ -147,18 +137,6 @@ func NewPgInstance(ctx context.Context, connString string, metrics PgInstanceMet
 	h.Ping(ctx)
 
 	return h, nil
-}
-
-func (h *pgInstance) Fetch(ctx context.Context, sql string, args ...any) (pgx.Row, error) {
-	return h.pgPool.QueryRow(ctx, sql, args...), nil
-}
-
-func (h *pgInstance) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
-	return h.pgPool.Query(ctx, sql, args...)
-}
-
-func (h *pgInstance) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
-	return h.pgPool.Exec(ctx, sql, args...)
 }
 
 func (h *pgInstance) RunMigrations(ctx context.Context) error {
@@ -269,7 +247,7 @@ func (h *pgInstance) CanTry() bool {
 	now := time.Now().Unix()
 	last := h.lastRetry.Load()
 
-	if now-last >= ProbeInterval {
+	if now-last >= probeInterval {
 		return h.lastRetry.CompareAndSwap(last, now)
 	}
 	return false
